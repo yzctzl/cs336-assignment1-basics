@@ -22,7 +22,6 @@ def find_chunk_boundaries(
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
-    file.seek(0)
 
     chunk_size = file_size // desired_num_chunks
 
@@ -33,7 +32,7 @@ def find_chunk_boundaries(
 
     mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
 
-    for bi in range(1, len(chunk_boundaries) - 1):
+    for bi in range(1, desired_num_chunks):
         initial_position = chunk_boundaries[bi]
         file.seek(initial_position)  # Start at boundary guess
         while True:
@@ -105,15 +104,16 @@ def parallelize_pre_tokenizer(
     chunks = []
     for start, end in zip(boundaries[:-1], boundaries[1:]):
         file.seek(start)
-        chunk = file.read(end - start).decode("utf-8", errors="replace")
+        chunk = file.read(end - start).decode("utf-8", errors="ignore")
         chunks.append(chunk)
-    assert len(chunks) == cpu_count, "Wrong chunks numbers, you should check the boundaries list."
 
+    # parallelize pre-tokenization
     frequency_table = Counter()
     with multiprocessing.Pool(cpu_count) as pool:
+        # imap is like map, but it returns results as they are available
         result_iter = pool.imap(pre_tokenization, chunks)
         for c in result_iter:
-            frequency_table += c
+            frequency_table.update(c)
 
     return frequency_table
 
