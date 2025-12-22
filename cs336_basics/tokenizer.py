@@ -3,8 +3,6 @@ from collections.abc import Iterable, Iterator
 
 import regex as re
 
-PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-COMPILED_PAT = re.compile(PAT)
 
 class Tokenizer:
     def __init__(
@@ -13,6 +11,10 @@ class Tokenizer:
         merges: list[tuple[bytes, bytes]],
         special_tokens: list[str] | None = None,
     ) -> None:
+        """
+        Construct a tokenizer from a given vocabulary,
+        list of merges, and (optionally) a list of special tokens.
+        """
         self.vocab = vocab
         # for encode merge, need to use bytes as key to find the order
         self.vocab_inv = {v: k for k, v in vocab.items()}
@@ -24,21 +26,34 @@ class Tokenizer:
         self.special_tokens = special_tokens if special_tokens else []
         # sort the list to keep longer token is processed first
         self.special_tokens.sort(key=len, reverse=True)
+        # use capture group to keep sprcial tokens in docs
+        self.special_token_pattern = re.compile("(" + "|".join(re.escape(tok) for tok in self.special_tokens) + ")")
+
+        self.PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
         # cache ids for words to speed up encoding
+        # to avoid oom: if len(self.word_ids) >= self.cache_size: self.word_ids.clear()
         self.word_ids: dict[str, list[int]] = {}
-
 
     @classmethod
     def from_files(cls, vocab_path: str, merges_path: str, special_tokens: list[str] | None = None):
+        """
+        Class method that constructs and return a Tokenizer from a serialized
+        vocabulary and list of merges (in the same format that your BPE training
+        code output) and (optionally) a list of special tokens.
+        """
         with open(vocab_path, "rb") as f:
             vocab = pickle.load(f)
         with open(merges_path, "rb") as f:
             merges = pickle.load(f)
         return cls(vocab, merges, special_tokens)
 
-
     def _bpe_merge(self, word: str) -> list[int]:
+        """
+        The core merge logic.
+        Apply Byte Pair Encoding (BPE) to a single word or string fragment,
+        returning the list of token IDs.
+        """
         # process special token
         if word in self.special_tokens:
             return [self.vocab_inv[word.encode("utf8")]]
@@ -74,15 +89,15 @@ class Tokenizer:
 
         return [self.vocab_inv[b] for b in word_bytes]
 
-
     def _pre_token(self, chunk: str) -> list[list[str]]:
+        """
+        Pre-tokenize the input string by splitting it into segments based on
+        special tokens and then into words using the pre-tokenization regex.
+        """
         words_list = []
         # same as pre-tokenization in bpe_train, split with special token
         if self.special_tokens:
-            # use capture group to keep sprcial tokens in docs
-            split_pattern = "(" + "|".join(re.escape(tok) for tok in self.special_tokens) + ")"
-            raw_docs = re.split(split_pattern, chunk)
-            docs = [doc for doc in raw_docs if doc]
+            docs = self.special_token_pattern.split(chunk)
         else:
             docs = [chunk]
 
@@ -91,17 +106,19 @@ class Tokenizer:
             if doc in self.special_tokens:
                 words = [doc]
             else:
-                words_scanner = COMPILED_PAT.finditer(doc)
+                words_scanner = self.PAT.finditer(doc)
                 words = [word.group(0) for word in words_scanner]
 
             words_list.append(words)
 
         return words_list
 
-
     def encode(self, text: str) -> list[int]:
+        """
+        Encode an input text into a sequence of token IDs.
+        """
         ids: list[int] = []
-
+        # text -> words_list(paragraph) -> words(sentence) -> word
         words_list = self._pre_token(text)
         for words in words_list:
             for word in words:
@@ -111,17 +128,20 @@ class Tokenizer:
 
         return ids
 
-
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+        """
+        Given an iterable of strings (e.g., a Python file handle),
+        return a generator that lazily yields token IDs. This is
+        required for memory-efficient tokenization of large files
+        that we cannot directly load into memory.
+        """
         # if call encode_iterable with file, the iterable is a line
         for line in iterable:
-            words_list = self._pre_token(line)
-            for words in words_list:
-                for word in words:
-                    if word not in self.word_ids:
-                        self.word_ids[word] = self._bpe_merge(word)
-                    yield from self.word_ids[word]
-
+            yield from self.encode(line)
 
     def decode(self, tokens: list[int]) -> str:
-        return b"".join(self.vocab[t] for t in tokens).decode("utf-8", errors="replace")
+        """
+        Decode a sequence of token IDs into text.
+        """
+        # use map is faster than for loop like: self.vocab[t] for t in tokens
+        return b"".join(map(self.vocab.__getitem__, tokens)).decode("utf-8", errors="replace")

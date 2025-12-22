@@ -27,4 +27,10 @@
 
 ## tokenizer_experiments
 
-1. 
+1. TinyStories's compression ratio is 4.08 and OpenWebText's is 4.4
+
+2. the compression ratio reduce to 4.05
+
+3. ~6.6MB/s, need ~35h to encode Piles dataset
+
+4. memory/storage efficient and fits most vocabularies
