@@ -95,9 +95,8 @@ def run_swiglu(
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
     swiglu = SwiGLU(d_model, d_ff)
-    swiglu.w1.weight.data = w1_weight
+    swiglu.gate.weight.data = torch.cat([w1_weight, w3_weight])
     swiglu.w2.weight.data = w2_weight
-    swiglu.w3.weight.data = w3_weight
     return swiglu(in_features)
 
 
@@ -153,12 +152,11 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    mhsa = MultiHeadSelfAttention(d_model, num_heads)
+    mhsa = MultiHeadSelfAttention(d_model, num_heads, max_seq_len=in_features.shape[-2])
+    qkv_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight])
     mhsa.load_state_dict(
         {
-            "q_proj.weight": q_proj_weight,
-            "k_proj.weight": k_proj_weight,
-            "v_proj.weight": v_proj_weight,
+            "qkv_proj.weight": qkv_weight,
             "output_proj.weight": o_proj_weight,
         }
     )
@@ -203,11 +201,10 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     mhsa = MultiHeadSelfAttention(d_model, num_heads, max_seq_len, theta)
+    qkv_weight = torch.cat([q_proj_weight, k_proj_weight, v_proj_weight])
     mhsa.load_state_dict(
         {
-            "q_proj.weight": q_proj_weight,
-            "k_proj.weight": k_proj_weight,
-            "v_proj.weight": v_proj_weight,
+            "qkv_proj.weight": qkv_weight,
             "output_proj.weight": o_proj_weight,
         }
     )
@@ -308,7 +305,31 @@ def run_transformer_block(
         running the Transformer block on the input features while using RoPE.
     """
     tb = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
-    tb.load_state_dict(weights)
+    qkv_weight = torch.cat(
+        [
+            weights["attn.q_proj.weight"],
+            weights["attn.k_proj.weight"],
+            weights["attn.v_proj.weight"],
+        ],
+        dim=0,
+    )
+    ffn_gate = torch.cat(
+        [
+            weights["ffn.w1.weight"],
+            weights["ffn.w3.weight"]
+        ],
+        dim=0
+    )
+    tb.load_state_dict(
+        {
+            "attn.qkv_proj.weight": qkv_weight,
+            "attn.output_proj.weight": weights["attn.output_proj.weight"],
+            "ln1.weight": weights["ln1.weight"],
+            "ffn.gate.weight": ffn_gate,
+            "ffn.w2.weight": weights["ffn.w2.weight"],
+            "ln2.weight": weights["ln2.weight"],
+        }
+    )
     return tb(in_features)
 
 
@@ -392,7 +413,31 @@ def run_transformer_lm(
         next-word distribution for each token.
     """
     lm = TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
-    lm.load_state_dict(weights)
+
+    # construct the merged KQV weights to load
+    new_state_dict = {}
+    new_state_dict["token_embeddings.weight"] = weights["token_embeddings.weight"]
+    new_state_dict["ln_final.weight"] = weights["ln_final.weight"]
+    new_state_dict["lm_head.weight"] = weights["lm_head.weight"]
+    for i in range(num_layers):
+        prefix = f"layers.{i}"
+
+        q_w = weights[f"{prefix}.attn.q_proj.weight"]
+        k_w = weights[f"{prefix}.attn.k_proj.weight"]
+        v_w = weights[f"{prefix}.attn.v_proj.weight"]
+
+        new_state_dict[f"{prefix}.attn.qkv_proj.weight"] = torch.cat([q_w, k_w, v_w], dim=0)
+
+        new_state_dict[f"{prefix}.attn.output_proj.weight"] = weights[f"{prefix}.attn.output_proj.weight"]
+
+        new_state_dict[f"{prefix}.ln1.weight"] = weights[f"{prefix}.ln1.weight"]
+        new_state_dict[f"{prefix}.ln2.weight"] = weights[f"{prefix}.ln2.weight"]
+
+        ffn_gate = torch.cat([weights[f"{prefix}.ffn.w1.weight"], weights[f"{prefix}.ffn.w3.weight"]], dim=0)
+        new_state_dict[f"{prefix}.ffn.gate.weight"] = ffn_gate
+        new_state_dict[f"{prefix}.ffn.w2.weight"] = weights[f"{prefix}.ffn.w2.weight"]
+
+    lm.load_state_dict(new_state_dict)
     return lm(in_indices)
 
 

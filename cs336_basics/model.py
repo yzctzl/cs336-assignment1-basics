@@ -139,9 +139,8 @@ class SwiGLU(nn.Module):
 
         """
         super().__init__()
-        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.gate = Linear(d_model, 2 * d_ff, device=device, dtype=dtype)
         self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
-        self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
 
     def forward(self, x: Float[Tensor, "... d_model"]) -> Float[Tensor, "... d_model"]:
         """
@@ -151,14 +150,13 @@ class SwiGLU(nn.Module):
         where x ∈ R^d_model, W1, W3 ∈ R^d_ff×d_model, W2 ∈ R^d_model×d_ff
         and canonically, d_ff = 8/3 d_model
         """
-        _w1 = self.w1(x)
-        return self.w2(SiLU(_w1) * self.w3(x))
+        _gate: Float[Tensor, "... 2_d_ff"] = self.gate(x)
+        _w1, _w3 = _gate.chunk(2, dim=-1)
+        return self.w2(SiLU(_w1) * _w3)
 
 
 class RotaryPositionalEmbedding(nn.Module):
-    """
-    TODO: use complex to optimizate: torch.polar, torch.view_as_complex, torch.view_as_real...
-    """
+    freqs_complex: Tensor
 
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None) -> None:
         """
@@ -180,13 +178,9 @@ class RotaryPositionalEmbedding(nn.Module):
         # position * theta
         freqs = torch.outer(position, freq_theta)
 
-        # RoPE (GPT-NeoX style) uses interleaved frequencies
-        # [theta0, theta0, theta1, theta1, ...]
-        emb = torch.repeat_interleave(freqs, 2, dim=-1)
-
-        # have a 2d pre-computed buffer of sin and cos values created during init
-        self.register_buffer("cos_cached", emb.cos(), persistent=False)
-        self.register_buffer("sin_cached", emb.sin(), persistent=False)
+        # cache complex
+        emb_complex = torch.polar(torch.ones_like(freqs), freqs)
+        self.register_buffer("freqs_complex", emb_complex, persistent=False)
 
     def forward(
         self, x: Float[Tensor, "... seq_len d_k"], token_positions: Int[Tensor, " ... seq_len"]
@@ -201,23 +195,29 @@ class RotaryPositionalEmbedding(nn.Module):
         You should use the token positions to slice your (possibly precomputed) cos and sin tensors
         along the sequence dimension.
         """
+        x_dtype = x.dtype
         seq_len = x.shape[-2]
 
+        # get corresponding rotation factors
         if token_positions is None:
-            cos = self.cos_cached[:seq_len].to(x.dtype)  # pyright: ignore[reportIndexIssue]
-            sin = self.sin_cached[:seq_len].to(x.dtype)  # pyright: ignore[reportIndexIssue]
+            freqs = self.freqs_complex[:seq_len]
         else:
-            cos = self.cos_cached[token_positions].to(x.dtype)  # pyright: ignore[reportIndexIssue]
-            sin = self.sin_cached[token_positions].to(x.dtype)  # pyright: ignore[reportIndexIssue]
+            freqs = self.freqs_complex[token_positions]
 
-        # Interleaved rotate: [-x1, x0, -x3, x2, ...]
-        x_rotated = torch.empty_like(x)
-        x_rotated[..., 0::2] = -x[..., 1::2]
-        x_rotated[..., 1::2] = x[..., 0::2]
+        # reshape input x and convert to complex view
+        # (..., d_k) -> (..., d_k/2, 2) -> (..., d_k/2) complex
+        # Note: view_as_complex requires the last dimension to be 2, and data should typically be float32
+        x_float = x.float().reshape(*x.shape[:-1], -1, 2)
+        x_complex = torch.view_as_complex(x_float)
 
-        # It is equivalent to multiplying each [x_2i, x_2i+1] vector by the rotation matrix
-        # [[cos, -sin], [sin, cos]], which defines the Rotary Positional Embedding.
-        return (x * cos) + (x_rotated * sin)
+        # Complex multiplication performs the rotation: (x0 + ix1) * (cos + isin)
+        # Based on broadcasting rules, freqs will automatically match the dimensions of x_complex
+        x_out_complex = x_complex * freqs
+
+        # (..., d_k/2) complex -> (..., d_k/2, 2) real -> (..., d_k)
+        x_out = torch.view_as_real(x_out_complex).flatten(-2)
+
+        return x_out.to(x_dtype)
 
 
 def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
@@ -291,15 +291,17 @@ class MultiHeadSelfAttention(nn.Module):
     5. Concatenating the head outputs and applying a final linear projection (O) to
        map the concatenated vectors back to the d_model space.
 
-    TODO: As a stretch goal, try combining the key, query, and value projections into a single weight matrix
+    combining the key, query, and value projections into a single weight matrix
     so you only need a single matrix multiply.
     """
+
+    mask: Tensor  # causal mask
 
     def __init__(
         self,
         d_model: int,
         num_heads: int,
-        max_seq_len: int | None = None,
+        max_seq_len: int,
         theta: float | None = None,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
@@ -309,27 +311,29 @@ class MultiHeadSelfAttention(nn.Module):
         self.num_heads = num_heads
         self.d_k = d_model // num_heads
 
+        # linearity: [Q K V] = [xW_Q^T xW_K^T x W_V^T] = x[W_Q^T W_K^T W_V^T]
         # Due to linearity, we can use a single linear layer to project into all heads
         # simultaneously instead of separate layers, which is more computationally efficient.
-        self.q_proj = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.k_proj = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.v_proj = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.qkv_proj = Linear(d_model, 3 * d_model, device=device, dtype=dtype)
         self.output_proj = Linear(d_model, d_model, device=device, dtype=dtype)
 
         self.rope = None
-        if max_seq_len is not None and theta is not None:
+        if theta is not None:
             # RoPE is applied to each head independently, so we use the dimension
             # of each head (d_k) instead of the total model dimension (d_model).
             self.rope = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len, device=device)
+
+        # causal mask: query is the row, and key is the col, mask is col <= row, so use tril
+        mask = torch.tril(torch.ones(max_seq_len, max_seq_len, device=device, dtype=torch.bool))
+        self.register_buffer("mask", mask, persistent=False)
 
     def forward(
         self,
         x: Float[Tensor, " ... seq_len d_in"],
         token_positions: Int[Tensor, " ... seq_len"] | None = None,
     ) -> Float[Tensor, " ... seq_len d_out"]:
-        Q = self.q_proj(x)
-        K = self.k_proj(x)
-        V = self.v_proj(x)
+        QKV: Float[Tensor, "... 3_d_model"] = self.qkv_proj(x)
+        Q, K, V = QKV.chunk(3, dim=-1)
 
         # Split the head dimension and move it to the -3 dimension to allow
         # parallel attention computation across heads.
@@ -342,9 +346,7 @@ class MultiHeadSelfAttention(nn.Module):
             k = self.rope(k, token_positions)
 
         seq_len = x.shape[-2]
-        # causal mask: query is the row, and key is the col, mask is col <= row, so use tril
-        mask = torch.tril(torch.ones(seq_len, seq_len, device=x.device, dtype=torch.bool))
-        dot_att = scaled_dot_product_attention(q, k, v, mask=mask)
+        dot_att = scaled_dot_product_attention(q, k, v, mask=self.mask[:seq_len, :seq_len])
         re_att = rearrange(dot_att, "... head seq_len d_k -> ... seq_len (head d_k)")
         return self.output_proj(re_att)
 
@@ -363,7 +365,7 @@ class TransformerBlock(nn.Module):
         max_seq_len: int,
         theta: float,
         device: torch.device | None = None,
-        dtype: torch.dtype | None = None
+        dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
         self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
@@ -377,10 +379,10 @@ class TransformerBlock(nn.Module):
         token_positions: Int[Tensor, " ... seq_len"] | None = None,
     ) -> Float[Tensor, " batch seq_len d_model"]:
         _norm_x = self.ln1(x)
-        _attn_x = self.attn(_norm_x, token_positions) + x
+        _attn_x = self.attn(_norm_x, token_positions).add(x)
 
         _norm_attn = self.ln2(_attn_x)
-        return self.ffn(_norm_attn) + _attn_x
+        return self.ffn(_norm_attn).add(_attn_x)
 
 
 class TransformerLM(nn.Module):
@@ -398,6 +400,7 @@ class TransformerLM(nn.Module):
     and concludes with a linear language modeling head to project hidden states
     back to the vocabulary space for next-token prediction.
     """
+
     def __init__(
         self,
         vocab_size: int,
@@ -408,22 +411,32 @@ class TransformerLM(nn.Module):
         d_ff: int,
         rope_theta: float,
         device: torch.device | None = None,
-        dtype: torch.dtype | None = None
+        dtype: torch.dtype | None = None,
+        **kwargs
     ) -> None:
         super().__init__()
+        pad_vocab = kwargs.get('pad_vocab', False)
+        tie_weight = kwargs.get('tie_weight', False)
+
         self.num_layers = num_layers
+        self.vocab_size = vocab_size
+        # pad num embeddings with 64
+        if pad_vocab:
+            vocab_size = ((vocab_size + 64 - 1) // 64) * 64
         self.token_embeddings = Embedding(vocab_size, d_model, device, dtype)
-        
+
         self.layers = nn.ModuleList()
         for _ in range(num_layers):
             self.layers.append(
-                TransformerBlock(
-                    d_model, num_heads, d_ff, context_length, rope_theta, device=device, dtype=dtype
-                )
+                TransformerBlock(d_model, num_heads, d_ff, context_length, rope_theta, device=device, dtype=dtype)
             )
 
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device, dtype)
+
+        # tie weights
+        if tie_weight:
+            self.lm_head.weight = self.token_embeddings.weight
 
     def forward(
         self,
