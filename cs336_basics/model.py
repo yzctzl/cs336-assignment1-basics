@@ -26,6 +26,8 @@ class Linear(nn.Module):
         # parameter initialization: N(µ = 0, σ2 = 2/(d_in+d_out)), truncated at [−3σ, 3σ]
         w_std = math.sqrt(2 / (in_features + out_features))
         # construct and store your parameter as W (not W^⊤) for memory ordering reasons
+        # storing in_features as the last dimension ensures memory is accessed contiguously (cache hited)
+        # during the dot product. bcuz: xW^T = for each row of x and row of W involves.
         w = nn.init.trunc_normal_(_w, mean=0, std=w_std, a=-3 * w_std, b=3 * w_std)
         # putting it in an nn.Parameter
         self.weight = nn.Parameter(w)
@@ -66,7 +68,8 @@ class Embedding(nn.Module):
         """
         Lookup the embedding vectors for the given token IDs.
         """
-        # bypasses MatMul via hardware-accelerated Gather for $O(1)$ dense feature lookup
+        # bypasses MatMul O(V) via hardware-accelerated gather kernel: it performs O(1)
+        # memory pointer arithmetic (base_ptr + index * stride) to fetch rows directly
         return self.weight[token_ids]
 
 
@@ -139,6 +142,7 @@ class SwiGLU(nn.Module):
 
         """
         super().__init__()
+        # due to linearity: combine w1 and w3 then project, only one MatMul
         self.gate = Linear(d_model, 2 * d_ff, device=device, dtype=dtype)
         self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
 
@@ -150,6 +154,7 @@ class SwiGLU(nn.Module):
         where x ∈ R^d_model, W1, W3 ∈ R^d_ff×d_model, W2 ∈ R^d_model×d_ff
         and canonically, d_ff = 8/3 d_model
         """
+        # computing [W1; W3]x is equivalent to [W1x; W3x]
         _gate: Float[Tensor, "... 2_d_ff"] = self.gate(x)
         _w1, _w3 = _gate.chunk(2, dim=-1)
         return self.w2(SiLU(_w1) * _w3)
@@ -206,16 +211,15 @@ class RotaryPositionalEmbedding(nn.Module):
 
         # reshape input x and convert to complex view
         # (..., d_k) -> (..., d_k/2, 2) -> (..., d_k/2) complex
-        # Note: view_as_complex requires the last dimension to be 2, and data should typically be float32
-        x_float = x.float().reshape(*x.shape[:-1], -1, 2)
-        x_complex = torch.view_as_complex(x_float)
+        # view_as_complex requires the last dimension to be 2, and data should typically be float32
+        x_complex = torch.view_as_complex(rearrange(x.float(), "... (d c) -> ... d c", c=2))
 
         # Complex multiplication performs the rotation: (x0 + ix1) * (cos + isin)
         # Based on broadcasting rules, freqs will automatically match the dimensions of x_complex
         x_out_complex = x_complex * freqs
 
         # (..., d_k/2) complex -> (..., d_k/2, 2) real -> (..., d_k)
-        x_out = torch.view_as_real(x_out_complex).flatten(-2)
+        x_out = rearrange(torch.view_as_real(x_out_complex), "... d c -> ... (d c)", c=2)
 
         return x_out.to(x_dtype)
 
@@ -269,8 +273,11 @@ def scaled_dot_product_attention(
         masked = torch.where(mask, scores, float("-inf"))
     else:
         masked = scores
-    # Attention(Q, K, V) = softmax(scores)V
-    return einsum(softmax(masked, -1), V, "... queries seq_len, ... seq_len d_k -> ... queries d_k")
+    # apply softmax to scores -1 dim (keys) for each individual query (dim -2)
+    # to normalize the scores into a distribution over all keys for each query
+    weights = softmax(masked, -1)
+    # Attention(Q, K, V) = softmax(scores) @ V
+    return einsum(weights, V, "... queries seq_len, ... seq_len d_k -> ... queries d_k")
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -412,11 +419,11 @@ class TransformerLM(nn.Module):
         rope_theta: float,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__()
-        pad_vocab = kwargs.get('pad_vocab', False)
-        tie_weight = kwargs.get('tie_weight', False)
+        pad_vocab = kwargs.get("pad_vocab", False)
+        tie_weight = kwargs.get("tie_weight", False)
 
         self.num_layers = num_layers
         self.vocab_size = vocab_size
@@ -453,4 +460,5 @@ class TransformerLM(nn.Module):
             _x = layer(_x, token_positions)
 
         _x = self.ln_final(_x)
-        return self.lm_head(_x)
+        logits = self.lm_head(_x)
+        return logits
