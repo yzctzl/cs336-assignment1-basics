@@ -70,10 +70,83 @@ Other: Embedding/RMSNorm/RoPE/Softmax are O(d)
 
 4. as the model increases, FFN takes up more proportionally, MHSA takes up less.
 ```
-GPT-2 small:  FFN:   173 946 175 488 FLOPS, MHSA:  82 141 249 536 FLOPS
-GPT-2 Medium: FFN:   618 475 290 624 FLOPS, MHSA: 257 698 037 760 FLOPS
+GPT-2 small:  FFN:   173 946 175 488 FLOPS, MHSA:  82 141 249 536 FLOPS
+GPT-2 Medium: FFN:   618 475 290 624 FLOPS, MHSA: 257 698 037 760 FLOPS
 GPT-2 Large:  FFN: 1 449 551 462 400 FLOPS, MHSA: 555 661 393 920 FLOPS
 ```
 
 5. need 1.495 227 957 × 10^14 FLOPS for one forward if GPT-2 XL increased the context length to 16,384. MHSA takes 9.856 949 944 × 10^13 FLOPS, FFN takes 4.830 658 560 × 10^12 FLOPS.
+
+## learning_rate_tuning
+
+1. use lr = 1e2 is faster decay than lr = 1e1, but when use lr = 1e3 it diverged.
+
+## adamwAccounting
+
+1. hyperparameters: batch_size, vocab_size, context_length, num_layers, d_model, num_heads, d_ff = 4 × d_model
+```
+Parameters:
+    token_embedding: vocab_size * d_model
+    Transformer block: * num_layers
+        RMSNorm(s): 2 * d_model
+        MHSA: 4 * d_model * d_model
+        FFN: 3 * d_model * 4 * d_model
+    final RMSNorm: d_model
+    output embedding: d_model * vocab_size
+
+Gradients:
+    1 * Parameters
+
+Optimizer State:
+    m,v: 2 * Parameters
+
+Activations(intermediate outputs of each layer stored during the forward pass for gradient calculation in the backward pass):
+    Transformer block: num_layers
+        RMSNorm(s): 2 * batch_size * context_length * d_model
+        MultiheadSelfAttention:
+            QKV proj: batch_size * context_length * 3 * d_model
+            Q^TK matmul: batch_size * num_heads * context_length * context_length
+            softmax: batch_size * num_heads * context_length * context_length
+            weighted sum of values: batch_size * context_length * d_model
+            output projection: batch_size * context_length * d_model
+        FFN:
+            gate: 2 * batch_size * context_length * d_ff
+            W2: batch_size * context_length * d_model
+    final RMSNorm: batch_size * context_length * d_model
+    output embedding: batch_size * context_length * vocab_size
+    cross entropy: batch_size * context_length * vocab_size
+```
+
+2. 
+```
+GPT-2 XL-shaped model memory
+= Parameters + Gradients + Optimizer State + Activations
+= 4 * Parameters + Activations
+= 8 508 230 400 float32 + 3 879 438 336 float32 * batch_size
+= 34.03 GB + 15.52 GB * batch_size
+=> 80GB
+=> batch_size = 2.96 
+```
+
+3. 14 * Parameters FLOPS
+```
+weight dency: θ - lr_t * m / (sqrt(v) + eps), 2
+m update: beta1 * m + (1 - beta1) * grad​, 3
+v update: beta2 * v + (1 - beta2) * grad^2​, 4
+lr_t: ~0
+θ update: θ = θ - lr_t * m / (sqrt(v) + eps)​​, 5
+Per Param = 14 FLOPS
+```
+
+4. 
+```
+our GPT-2 XL-shaped model has 2.125B parameters
+FLOPS/Token = (2 + 4) * 2.125B = 12.75B
+A100 FP32 FLOPS = 19.5 * 10^12 FLOPS * 0.5 = 9.75 * 10^12 FLOPS
+Tokens = 400,000 * 1024 * 1024 = 419.3B
+Time = 12.75B * 419.3B / (9.75 * 10^12) = 17.4 years
+
+GPT-2 XL model has 1.558 B parameters
+Times = 6 * 1.558B * 419.3B / (9.75 * 10^12) = 12.75 years
+```
 
