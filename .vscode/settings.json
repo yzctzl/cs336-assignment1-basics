@@ -3,5 +3,55 @@
         "tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+
+    /* --- Basedpyright 核心优化 --- */
+    
+    // 1. 最重要的优化：只分析当前打开的文件，不扫描整个项目
+    "basedpyright.analysis.diagnosticMode": "openFilesOnly",
+    
+    // 2. 排除大型第三方库目录
+    "basedpyright.analysis.exclude": [
+        "**/node_modules",
+        "**/__pycache__",
+        "**/venv",
+        "**/.venv",
+        "**/site-packages",
+        "**/data",
+        "**/checkpoints"
+    ],
+
+    // 3. 忽略重型库的内部错误（防止它去解析 PyTorch 的底层实现）
+    "basedpyright.analysis.ignore": [
+        "**/torch/**",
+        "**/transformers/**",
+        "**/matplotlib/**",
+        "**/pandas/**"
+    ],
+
+    // 4. 类型检查模式设为 basic（针对 AI 实验性代码，避免过严导致分析变慢）
+    "basedpyright.analysis.typeCheckingMode": "basic",
+
+    /* --- VS Code 文件系统优化 (减轻磁盘 IO) --- */
+
+    // 禁止 VS Code 监控第三方库的变化 (Linux 下提升极大)
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/*/**": true,
+        "**/venv/**": true,
+        "**/.venv/**": true,
+        "**/site-packages/**": true
+    },
+
+    // 在侧边栏和搜索中隐藏无关的大文件夹
+    "files.exclude": {
+        "**/__pycache__": true,
+        "**/.venv": true,
+        "**/venv": true
+    },
+    "search.exclude": {
+        "**/venv": true,
+        "**/.venv": true
+    }
 }

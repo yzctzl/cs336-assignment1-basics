@@ -1,0 +1,39 @@
+{
+    "seed": 32,
+    "data": {
+        "train": "./data/TinyStoriesV2-GPT4-train.npy",
+        "valid": "./data/TinyStoriesV2-GPT4-valid.npy",
+        "dtype": "uint16"
+    },
+    "model": {
+        "vocab_size": 10048,
+        "context_length": 512,
+        "d_model": 512,
+        "num_layers": 12,
+        "num_heads": 8,
+        "d_ff": 1024,
+        "rope_theta": 10048,
+        "device": "cuda"
+    },
+    "optimizer": {
+        "lr": 5e-4,
+        "betas": [0.9, 0.95],
+        "eps": 1e-8,
+        "weight_decay": 0.1
+    },
+    "train": {
+        "batch_size": 8,
+        "steps": 2000,
+        "lr_max": 5e-4,
+        "lr_min": 5e-5,
+        "t_w": 200,
+        "t_c": 1800,
+        "grad_clip": 1.0,
+        "accum_steps": 4,
+        "save": {
+            "enable": true,
+            "interval": 50,
+            "to": "./dist/ckpt.pt"
+        }
+    }
+}
