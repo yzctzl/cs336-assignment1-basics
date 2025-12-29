@@ -19,6 +19,10 @@ def valid(
     cfg: Configures,
     iters: int=10
 ):
+    """
+    get 10 sample from valid set and calculate the mean loss
+    """
+    # change model work mode to valid/inference
     model.eval()
     losses = torch.zeros(iters)
 
@@ -29,9 +33,9 @@ def valid(
         loss = cross_entropy(logits, y)
         losses[k] = loss.item()
 
-    out = losses.mean()
+    # change back to train mode
     model.train()
-    return out
+    return losses.mean()
 
 
 def train(
@@ -55,10 +59,13 @@ def train(
         # x, y = get_batch(train_set, tc.batch_size, cfg.model.context_length, device)
         optimizer.zero_grad(set_to_none=True)
 
+        # use warm up + cosin lr dency schedule
         lr = get_lr_cosine_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
+        # update lr in all optimizer params groups
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
+        # use gradient accumulation to simulate a larger batch size
         accum_loss = 0.0
         for micro_step in range(tc.accum_steps):
             x, y = get_batch(train_set, tc.batch_size, cfg.model.context_length, device)
@@ -67,17 +74,23 @@ def train(
             loss = cross_entropy(logits, y) / tc.accum_steps
             accum_loss += loss.item()
 
+            # Since PyTorch sums gradients in the .grad attribute by default, calling backward on each
+            # micro-batch loss (scaled by 1/accum_steps) computes the average gradient for the full batch size.
             loss.backward()
 
+        # clip the gradients to prevent them from exploding
         gradient_clipping(model.parameters(), tc.grad_clip)
         optimizer.step()
 
         # log and save checkpoint
         if tc.save.enable and (it % tc.save.interval == 0 or it == tc.steps - 1):
+            # Wait for all kernels in all streams on a CUDA device to complete, then count time.
             torch.cuda.synchronize()
             t1 = time.perf_counter()
             dt = t1 - t0
             tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps) / dt
+
+            # calc valid loss
             vloss = valid(model, valid_set, cfg)
             print(f"Step {it:04d} | Time: {dt:.6f} | Loss: {vloss.item():.4f} | "
                   f"Train Loss: {accum_loss:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}")        

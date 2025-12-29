@@ -34,7 +34,7 @@ class CheckPointsConfig(BaseModel):
 class TrainConfig(BaseModel):
     batch_size: int = Field(ge=1)
     steps: int = Field(gt=0)
-    lr_max: float 
+    lr_max: float
     lr_min: float
     t_w: int  # Warmup steps
     t_c: int  # Cosine decay steps
@@ -43,9 +43,22 @@ class TrainConfig(BaseModel):
     save: CheckPointsConfig
 
 
+class TokenizerConfig(BaseModel):
+    vocab_path: str
+    merges_path: str
+    special_tokens: list[str]
+
+
+class InferConfig(BaseModel):
+    kv_cache: bool
+    checkpoint: str
+
+
 class Configures(BaseModel):
-    seed: int = 42
+    seed: int = 32
     data: DataConfig
     model: ModelConfig
     optimizer: OptimizerConfig
     train: TrainConfig
+    tokenizer: TokenizerConfig
+    infer: InferConfig

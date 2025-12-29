@@ -35,5 +35,14 @@
             "interval": 50,
             "to": "./dist/ckpt.pt"
         }
+    },
+    "tokenizer": {
+        "vocab_path": "./data/TinyStoriesV2-GPT4-train_vocab.pkl",
+        "merges_path": "./data/TinyStoriesV2-GPT4-train_merges.pkl",
+        "special_tokens": ["<|endoftext|>"]
+    },
+    "infer": {
+        "kv_cache": false,
+        "checkpoint": "./dist/saves/checkpoint_1650_1.70.pt"
     }
 }
