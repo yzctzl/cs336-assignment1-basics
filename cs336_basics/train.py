@@ -6,6 +6,7 @@ import numpy as np
 import torch
 from torch import nn, optim
 
+import wandb
 from cs336_basics.config import Configures, TrainConfig
 from cs336_basics.data import get_batch, load_checkpoint, save_checkpoint
 from cs336_basics.model import TransformerLM
@@ -46,6 +47,18 @@ def train(
     train_set: np.ndarray,
     valid_set: np.ndarray,
 ):
+    # init wandb
+    wandb.init(
+        project="cs336-assignment1-basic",
+        name=f"run-d{cfg.model.d_model}_{cfg.model.d_ff}-l{cfg.model.num_layers}-b{cfg.train.batch_size}*{cfg.train.accum_steps}"
+             f"-h{cfg.model.num_heads}-lr{cfg.train.lr_max}_{cfg.train.lr_min}-tss",
+        config=cfg.model_dump(),
+        reinit="finish_previous",
+        settings=wandb.Settings(
+            quiet=True,
+            silent=True
+        )
+    )
     # model = torch.compile(model)
     model.train()
 
@@ -79,20 +92,33 @@ def train(
             loss.backward()
 
         # clip the gradients to prevent them from exploding
-        gradient_clipping(model.parameters(), tc.grad_clip)
+        total_norm = gradient_clipping(model.parameters(), tc.grad_clip)
         optimizer.step()
 
-        # log and save checkpoint
-        if tc.save.enable and (it % tc.save.interval == 0 or it == tc.steps - 1):
+        # log and save checkpoint after each interval steps
+        if tc.save.enable and ((it + 1) % tc.save.interval == 0 or it == 0):
             # Wait for all kernels in all streams on a CUDA device to complete, then count time.
             torch.cuda.synchronize()
             t1 = time.perf_counter()
             dt = t1 - t0
-            tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps) / dt
+            tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps * tc.save.interval) / dt
 
             # calc valid loss
-            vloss = valid(model, valid_set, cfg)
-            print(f"Step {it:04d} | Time: {dt:.6f} | Loss: {vloss.item():.4f} | "
+            vloss = valid(model, valid_set, cfg).item()
+            free_mem, total_mem = torch.cuda.mem_get_info(device)
+            # log to wandb
+            metrics = {
+                "step": it,
+                "time": dt,
+                "valid/loss": vloss,
+                "train/loss": accum_loss,
+                "perf/tps": tps,
+                "train/lr": lr,
+                "gpu/mem": (total_mem - free_mem) / 1024 ** 2,
+                "perf/grad_norm": total_norm
+            }
+            wandb.log(metrics)
+            print(f"Step {it:04d} | Time: {dt:.6f} | Loss: {vloss:.4f} | "
                   f"Train Loss: {accum_loss:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}")        
 
             save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}.pt")

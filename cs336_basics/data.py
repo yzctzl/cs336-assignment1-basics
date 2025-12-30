@@ -8,7 +8,7 @@ from torch import Tensor
 
 
 def get_batch(
-    dataset: npt.NDArray, batch_size: int, context_length: int, device: str
+    dataset: npt.NDArray, batch_size: int, context_length: int, device: torch.device | str
 ) -> tuple[Tensor, Tensor]:
     """
         Given a dataset (a 1D numpy array of integers) and a desired batch size and

@@ -202,11 +202,11 @@ def gradient_clipping(
     parameters: Iterable[torch.nn.Parameter],
     max_l2_norm: float,
     eps: float = 1e-6
-):
+) -> float:
     # get all parameters
     grads = [p.grad for p in parameters if p.grad is not None]
     if len(grads) == 0:
-        return
+        return 0
 
     # given the gradient for all parameters g, we compute g's ℓ2-norm
     # global ℓ2-norm(g) for all g as a single a huge vector and norm on it
@@ -216,3 +216,5 @@ def gradient_clipping(
         scale = max_l2_norm / (total_l2_norm + eps)
         for g in grads:
             g.mul_(scale)
+
+    return total_l2_norm

@@ -1,4 +1,5 @@
 import json
+import sys
 
 import click
 import torch
@@ -47,10 +48,6 @@ class Generator:
 
     @torch.inference_mode()
     def streamer(self, prompt: str, max_gens: int, temperature: float, top_p: float):
-        special_ids = []
-        for token in self.cfg.tokenizer.special_tokens:
-            special_ids.extend(self.tokenizer.encode(token))
-
         _prompt = self.tokenizer.encode(prompt)
         _prompt = torch.tensor(_prompt, dtype=torch.long, device=self.cfg.model.device)
         tokens = rearrange(_prompt, "seq_len -> 1 seq_len")
@@ -70,13 +67,16 @@ class Generator:
 
             next_word = self.tokenizer.decode([next_token.item()])  # pyright: ignore[reportArgumentType]
             yield next_word
-            if next_token.item() in special_ids:
+            if next_word in self.cfg.tokenizer.special_tokens:
                 return
 
 
 @click.command()
 @click.option("-c", "--config", type=click.Path(exists=True), required=True)
-def main(config):
+@click.option("-l", "--length", type=click.INT, default=512, help="Max LM output length.")
+@click.option("-t", "--temperature", type=click.FLOAT, default=0.8, help="Temperature range from 0.0 to 1.0")
+@click.option("-p", "--top_p", type=click.FLOAT, default=0.8, help="The Top-p")
+def main(config, length, temperature, top_p):
     try:
         with open(config) as f:
             conf = json.load(f)
@@ -85,11 +85,17 @@ def main(config):
         print(f"check your config: {e}")
         return
 
-    prompt = "One day, "
-
     gen = Generator(cfg)
-    for word in gen.streamer(prompt, 512, 0.9, 0.9):
-        print(word, end="", flush=True)
+    while True:
+        try:
+            prompt = input("User: ")
+            print("Assistant: ", end="")
+            for word in gen.streamer(prompt.strip(), length, temperature, top_p):
+                print(word, end="", flush=True)
+            print()
+        except KeyboardInterrupt or EOFError:
+            print("\nSYSTEM: BYE!")
+            sys.exit(0)
 
 
 if __name__ == "__main__":

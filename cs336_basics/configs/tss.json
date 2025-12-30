@@ -7,11 +7,11 @@
     },
     "model": {
         "vocab_size": 10048,
-        "context_length": 512,
+        "context_length": 256,
         "d_model": 512,
-        "num_layers": 12,
-        "num_heads": 8,
-        "d_ff": 1024,
+        "num_layers": 4,
+        "num_heads": 16,
+        "d_ff": 1344,
         "rope_theta": 1e4,
         "device": "cuda"
     },
@@ -22,14 +22,14 @@
         "weight_decay": 0.1
     },
     "train": {
-        "batch_size": 8,
-        "steps": 2000,
-        "lr_max": 5e-4,
+        "batch_size": 32,
+        "steps": 2500,
+        "lr_max": 4e-3,
         "lr_min": 5e-5,
         "t_w": 200,
-        "t_c": 1800,
+        "t_c": 2300,
         "grad_clip": 1.0,
-        "accum_steps": 1,
+        "accum_steps": 2,
         "save": {
             "enable": true,
             "interval": 50,
@@ -43,6 +43,6 @@
     },
     "infer": {
         "kv_cache": false,
-        "checkpoint": "./dist/saves/checkpoint_1650_1.70.pt"
+        "checkpoint": "./dist/saves/checkpoint_2399_1.64.pt"
     }
 }

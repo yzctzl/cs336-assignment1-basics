@@ -150,3 +150,29 @@ GPT-2 XL model has 1.558 B parameters
 Times = 6 * 1.558B * 419.3B / (9.75 * 10^12) = 12.75 years
 ```
 
+## learning_rate
+
+1. search from big to small: 5e-2 -> 1e-2 -> 5e-3 -> 1e-3 -> 5e-4, get valid loss 1.61 with:`batch_size: 32*2, step: 2500, lr: 4e-3->5e-5, warmup: 200, context_length: 256, d_model: 512, num_layers: 4, num_heads: 16, d_ff: 1344` on my laptop w/ rtx 2060 maxq in 30mins.
+
+2. "at the edge of stability": lr_max is in 1e-2 -> 1e-3
+
+
+## batch_size_experiment
+
+1. testd batch_size: `1, 2, 4, 8, 16, 32, 32*2, 32*4`, the more larger batch_size the more better valid loos can get.
+
+## generate
+```
+User: Once upon a time
+Assistant: , there was a little girl named Sue. Sue loved to play with her toys. One day, she found a big box in her room. She was very excited to see what was inside.
+Sue opened the box and found a big, soft pillow. She wanted to wrap the pillow around her pillow. She put the pillow on her pillow and went to her room. Sue was very happy to see her pillow.
+Sue put the pillow on her pillow and went to play with her toys. She had a lot of fun with her pillow. When she was done, she put the pillow on her pillow. She was very proud of her pillow. Sue knew that her pillow was special and special.
+<|endoftext|>
+User: Once upon a time
+Assistant: , there was a little girl named Lily. She loved to play with her toys and eat yummy food. One day, she found a big, red apple in her yard. She was very happy and wanted to eat it all by herself.
+Lily took the apple to her mom and said, "Mom, can I have a bite of the apple?" Her mom smiled and said, "Yes, you can have one." Lily was very happy and took the apple home.
+Lily ate the apple and felt very happy. She knew that her mom would always be there to help her. And every time she ate her apple, she would say, "Thank you, Mom!" And they lived happily ever after.
+<|endoftext|>
+```
+
+
