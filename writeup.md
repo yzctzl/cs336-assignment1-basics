@@ -159,7 +159,7 @@ Times = 6 * 1.558B * 419.3B / (9.75 * 10^12) = 12.75 years
 
 ## batch_size_experiment
 
-1. testd batch_size: `1, 2, 4, 8, 16, 32, 32*2, 32*4`, the more larger batch_size the more better valid loos can get.
+testd batch_size: `1, 2, 4, 8, 16, 32, 32*2, 32*4`, the more larger batch_size the more better valid loos can get.
 
 ## generate
 ```
@@ -175,4 +175,19 @@ Lily ate the apple and felt very happy. She knew that her mom would always be th
 <|endoftext|>
 ```
 
+## layer_norm_ablation
+
+use the previous optimal learning rate, the model diverged shortly. use a 1/10 smaller learning rate works but get a unsatisfactory valid loss.
+
+## pre_norm_ablation
+
+for various lr, pre-norm works fine, but post-norm very like to stuck in loss 5-6, this becomes increasingly apparent as the num_layers increases.
+
+## no_pos_emb
+
+without rope, model is herder to learn position relationship, is worse for every step than with rope, especially for long context
+
+## swiglu_ablation
+
+the valid loss is better than SiLU, about ~1%-5% smaller
 

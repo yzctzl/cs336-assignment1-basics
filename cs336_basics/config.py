@@ -14,7 +14,7 @@ class ModelConfig(BaseModel):
     num_layers: int = Field(ge=1)
     num_heads: int = Field(ge=1)
     d_ff: int
-    rope_theta: float = 10000.0
+    rope_theta: float | None = 10000.0
     device: str = "cuda"
 
 
