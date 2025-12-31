@@ -83,7 +83,7 @@ GPT-2 Large:  FFN: 1 449 551 462 400 FLOPS, MHSA: 555 661 393 920 
 
 ## adamwAccounting
 
-1. hyperparameters: batch_size, vocab_size, context_length, num_layers, d_model, num_heads, d_ff = 4 × d_model
+1. hyperparameters: batch_size(B), vocab_size(V), context_length(T), num_layers(L), d_model(d), num_heads(H), d_ff = 4 × d_model
 ```
 Parameters:
     token_embedding: vocab_size * d_model
@@ -115,13 +115,16 @@ Activations(intermediate outputs of each layer stored during the forward pass fo
     final RMSNorm: batch_size * context_length * d_model
     output embedding: batch_size * context_length * vocab_size
     cross entropy: batch_size * context_length * vocab_size
+
+Total Memory
+= Parameters + Gradients + Optimizer State + Activations
+= 4 * Parameters + Activations
+= 4 * (16Ld^2 + (2L + 1 + 2V)d) + BT(L(16d + 2HT) + d + 2V)
 ```
 
 2. 
 ```
 GPT-2 XL-shaped model memory
-= Parameters + Gradients + Optimizer State + Activations
-= 4 * Parameters + Activations
 = 8 508 230 400 float32 + 3 879 438 336 float32 * batch_size
 = 34.03 GB + 15.52 GB * batch_size
 => 80GB

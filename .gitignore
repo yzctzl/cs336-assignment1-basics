@@ -166,3 +166,4 @@ cython_debug/
 # data
 data/*.txt
 data/*.npy
+data/*.npz

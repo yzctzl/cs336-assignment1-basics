@@ -161,7 +161,8 @@ class SwiGLU(nn.Module):
 
 
 class RotaryPositionalEmbedding(nn.Module):
-    freqs_complex: Tensor
+    cos_cached: Tensor
+    sin_cached: Tensor
 
     def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None) -> None:
         """
@@ -184,8 +185,8 @@ class RotaryPositionalEmbedding(nn.Module):
         freqs = torch.outer(position, freq_theta)
 
         # cache complex
-        emb_complex = torch.polar(torch.ones_like(freqs), freqs)
-        self.register_buffer("freqs_complex", emb_complex, persistent=False)
+        self.register_buffer("cos_cached", freqs.cos(), persistent=False)
+        self.register_buffer("sin_cached", freqs.sin(), persistent=False)
 
     def forward(
         self, x: Float[Tensor, "... seq_len d_k"], token_positions: Int[Tensor, " ... seq_len"]
@@ -203,25 +204,21 @@ class RotaryPositionalEmbedding(nn.Module):
         x_dtype = x.dtype
         seq_len = x.shape[-2]
 
-        # get corresponding rotation factors
         if token_positions is None:
-            freqs = self.freqs_complex[:seq_len]
+            cos = self.cos_cached[:seq_len].to(x_dtype)
+            sin = self.sin_cached[:seq_len].to(x_dtype)
         else:
-            freqs = self.freqs_complex[token_positions]
+            cos = self.cos_cached[token_positions].to(x_dtype)
+            sin = self.sin_cached[token_positions].to(x_dtype)
 
-        # reshape input x and convert to complex view
-        # (..., d_k) -> (..., d_k/2, 2) -> (..., d_k/2) complex
-        # view_as_complex requires the last dimension to be 2, and data should typically be float32
-        x_complex = torch.view_as_complex(rearrange(x.float(), "... (d c) -> ... d c", c=2))
+        # (B, H, T, d_k/2) and (B, H, T, d_k/2)
+        x1, x2 = x.chunk(2, dim=-1)
 
-        # Complex multiplication performs the rotation: (x0 + ix1) * (cos + isin)
-        # Based on broadcasting rules, freqs will automatically match the dimensions of x_complex
-        x_out_complex = x_complex * freqs
+        # [x1 * cos - x2 * sin, x1 * sin + x2 * cos]
+        # x1/x2: (B, H, T, 32), sin/cos: (T, 32), cat at dim=-1, rope: (B, H, T, 64)
+        rope = torch.cat((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1)
 
-        # (..., d_k/2) complex -> (..., d_k/2, 2) real -> (..., d_k)
-        x_out = rearrange(torch.view_as_real(x_out_complex), "... d c -> ... (d c)", c=2)
-
-        return x_out.to(x_dtype)
+        return rope
 
 
 def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:

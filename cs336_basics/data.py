@@ -37,9 +37,9 @@ def get_batch(
     x_list = [dataset[i : i + context_length] for i in idx]
     y_list = [dataset[i + 1 : i + context_length + 1] for i in idx]
 
-    # stack the list of NDArray in new axis, then passed to as_tensor
-    x = torch.as_tensor(np.stack(x_list), dtype=torch.long, device=device)
-    y = torch.as_tensor(np.stack(y_list), dtype=torch.long, device=device)
+    # stack the list of NDArray in new axis, then passed to from_numpy
+    x = torch.from_numpy(np.stack(x_list).astype(np.int64)).to(device, non_blocking=True)
+    y = torch.from_numpy(np.stack(y_list).astype(np.int64)).to(device, non_blocking=True)
 
     return (x, y)
 

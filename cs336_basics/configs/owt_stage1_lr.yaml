@@ -1,0 +1,37 @@
+project: cs336-assignment1-basic
+name: owt-stage1-lr
+program: cs336_basics/train.py
+
+method: bayes
+metric:
+  name: valid/loss
+  goal: minimize
+parameters:
+  model.d_model:
+    value: 768
+  model.num_layers:
+    value: 12
+  train.batch_size: 
+    value: 64
+  train.accum_steps:
+    value: 8
+  
+  train.lr_max:
+    distribution: log_uniform_values
+    min: 1e-4
+    max: 1e-2
+  
+  train.t_w:
+    value: 500
+
+early_terminate:
+  type: hyperband
+  min_iter: 500
+  eta: 2
+
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--config"
+  - "cs336_basics/configs/owt.json"

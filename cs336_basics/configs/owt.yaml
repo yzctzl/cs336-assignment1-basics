@@ -1,0 +1,21 @@
+method: bayes
+metric:
+  name: valid/loss
+  goal: minimize
+parameters:
+  train.lr_max:
+    distribution: log_uniform_values
+    max: 5e-3
+    min: 1e-4
+  train.t_w:
+    values: [200, 500, 1000]
+  model.d_model:
+    values: [768, 1024]
+  model.num_layers:
+    values: [12, 18, 24]
+  optimizer.weight_decay:
+    values: [0.01, 0.1]
+early_terminate:
+  type: hyperband
+  min_iter: 700
+  eta: 2
