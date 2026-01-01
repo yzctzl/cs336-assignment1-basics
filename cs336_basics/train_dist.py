@@ -2,6 +2,7 @@ import functools
 import json
 import os
 import time
+import traceback
 
 import click
 import numpy as np
@@ -146,6 +147,10 @@ def train(
                     wandb.log(metrics)
                     print(f"Step {it:04d} | Time (step): {dt_step:.4f} | Loss: {vloss:.4f} | TPS: {tps:.1f}")
                     checkpoint = {"model": raw_state_dict, "optimizer": optimizer.state_dict(), "iteration": it}
+                    # Ensure directory exists for saving
+                    save_dir = os.path.dirname(f"./dist/checkpoint_{it:04d}.pt")
+                    if save_dir:
+                        os.makedirs(save_dir, exist_ok=True)
                     torch.save(checkpoint, f"./dist/checkpoint_{it:04d}.pt")
                 # Reset interval timer after recording
                 t_start = time.perf_counter()
@@ -154,8 +159,8 @@ def train(
 @click.command()
 @click.option("-c", "--config", type=click.Path(exists=True), required=True)
 @click.option("-r", "--resume", type=click.Path(True), help="resume form a checkpoint file")
-@click.option("-m", "--mmap", type=click.BOOL, default=False, help="use mmap load data to save memory")
-@click.option("--fp16", type=click.BOOL, default=False, help="use fp16 and GradScaler to train")
+@click.option("-m", "--mmap", is_flag=True, help="use mmap load data to save memory")
+@click.option("--fp16", is_flag=True, help="use fp16 and GradScaler to train")
 def main(config, resume, mmap, fp16):
     dist.init_process_group(backend="nccl")
     rank = int(os.environ["RANK"])
@@ -239,4 +244,10 @@ def main(config, resume, mmap, fp16):
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Print traceback to help debugging distributed failures
+        print(f"Rank {os.environ.get('RANK', 'N/A')} failed with error:")
+        traceback.print_exc()
+        raise
