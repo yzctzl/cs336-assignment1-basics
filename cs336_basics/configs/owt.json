@@ -7,10 +7,10 @@
     },
     "model": {
         "vocab_size": 32000,
-        "context_length": 1024,
+        "context_length": 768,
         "d_model": 768,
-        "num_layers": 12,
-        "num_heads": 16,
+        "num_layers": 8,
+        "num_heads": 8,
         "d_ff": 2048,
         "rope_theta": 1e4,
         "device": "cuda"
@@ -22,14 +22,14 @@
         "weight_decay": 0.1
     },
     "train": {
-        "batch_size": 8,
+        "batch_size": 16,
         "steps": 2500,
         "lr_max": 4e-3,
         "lr_min": 5e-5,
         "t_w": 200,
         "t_c": 2300,
         "grad_clip": 1.0,
-        "accum_steps": 32,
+        "accum_steps": 16,
         "save": {
             "enable": true,
             "interval": 50,

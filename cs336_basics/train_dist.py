@@ -3,6 +3,7 @@ import json
 import os
 import time
 import traceback
+import warnings
 
 import click
 import numpy as np
@@ -26,6 +27,9 @@ from cs336_basics.optimizer import AdamW, cross_entropy, get_lr_cosine_schedule
 
 # NOTE: Removed gradient_clipping import as FSDP requires internal clipping
 # from cs336_basics.optimizer import gradient_clipping
+
+# Suppress annoying FSDP deprecation warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="torch.distributed.fsdp")
 
 
 def is_master():
@@ -156,6 +160,10 @@ def train(
                     if save_dir:
                         os.makedirs(save_dir, exist_ok=True)
                     torch.save(checkpoint, f"./dist/checkpoint_{it:04d}.pt")
+                    # Clearer progress info
+                    if it % 10 == 0:
+                        torch.cuda.empty_cache()  # Periodically clear fragmented memory on rank 0
+
                 # Reset interval timer after recording
                 t_start = time.perf_counter()
 
@@ -167,12 +175,19 @@ def train(
 @click.option("--fp16", is_flag=True, help="use fp16 and GradScaler to train")
 @click.option("--checkpoint", is_flag=True, help="use activation checkpointing to save memory")
 def main(config, resume, mmap, fp16, checkpoint):
-    dist.init_process_group(backend="nccl")
-    rank = int(os.environ["RANK"])
-    local_rank = int(os.environ["LOCAL_RANK"])
-    world_size = int(os.environ["WORLD_SIZE"])
+    # Quiet non-zero ranks: only show ERRORS for C++ backend and NCCL
+    if int(os.environ.get("RANK", 0)) != 0:
+        os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
+        os.environ["NCCL_DEBUG"] = "VERSION"  # Only show version, hide connection logs
 
-    device = get_device()
+    # Setting device BEFORE init_process_group avoids "unknown device" warnings
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device(local_rank)
+    device = torch.device(f"cuda:{local_rank}")
+
+    dist.init_process_group(backend="nccl", device_id=device)
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ["WORLD_SIZE"])
 
     # Ensure output directory exists
     if rank == 0:
@@ -227,8 +242,10 @@ def main(config, resume, mmap, fp16, checkpoint):
 
     # NOTE: Apply Activation Checkpointing to save memory
     if checkpoint:
+
         def check_fn(submodule):
             return isinstance(submodule, TransformerBlock)
+
         apply_activation_checkpointing(model, checkpoint_wrapper_fn=checkpoint_wrapper, check_fn=check_fn)
 
     optimizer = AdamW(model.parameters(), **cfg.optimizer.model_dump())
