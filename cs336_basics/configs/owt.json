@@ -7,7 +7,7 @@
     },
     "model": {
         "vocab_size": 32000,
-        "context_length": 768,
+        "context_length": 1024,
         "d_model": 768,
         "num_layers": 8,
         "num_heads": 8,
@@ -22,14 +22,14 @@
         "weight_decay": 0.1
     },
     "train": {
-        "batch_size": 16,
+        "batch_size": 8,
         "steps": 2500,
         "lr_max": 4e-3,
         "lr_min": 5e-5,
         "t_w": 200,
         "t_c": 2300,
         "grad_clip": 1.0,
-        "accum_steps": 16,
+        "accum_steps": 8,
         "save": {
             "enable": true,
             "interval": 50,

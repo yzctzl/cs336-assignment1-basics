@@ -79,7 +79,6 @@ def train(
     model.train()
 
     tc: TrainConfig = cfg.train
-    t_start = time.perf_counter()
 
     for it in range(start_step, tc.steps):
         t0 = time.perf_counter()
@@ -110,18 +109,35 @@ def train(
         scaler.step(optimizer)
         scaler.update()
 
-        if tc.save.enable and ((it + 1) % tc.save.interval == 0 or it == 0):
-            torch.cuda.synchronize()
-            t1 = time.perf_counter()
-            dt = t1 - t0
-            tps = (
-                tc.batch_size
-                * cfg.model.context_length
-                * tc.accum_steps
-                * tc.save.interval
-                * int(os.environ.get("WORLD_SIZE", 1))
-            ) / dt
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+        dt_step = t1 - t0
+        tps = (
+            tc.batch_size * cfg.model.context_length * tc.accum_steps * int(os.environ.get("WORLD_SIZE", 1))
+        ) / dt_step
 
+        is_interval = tc.save.enable and ((it + 1) % tc.save.interval == 0 or it == 0)
+
+        if rank == 0:
+            free_mem, total_mem = torch.cuda.mem_get_info(local_rank)
+            metrics = {
+                "step": it,
+                "train/time": dt_step,
+                "train/loss": accum_loss,
+                "perf/tps": tps,
+                "train/lr": lr,
+                "gpu/mem": (total_mem - free_mem) / 1024**2,
+                "perf/grad_norm": total_norm.item(),
+            }
+            # Only print standard progress if NOT an interval step to avoid duplication
+            if not is_interval:
+                print(
+                    f"Step {it:04d} | Time: {dt_step:.6f} | Train Loss: {accum_loss:.4f} | "
+                    f"TPS: {tps:.1f} | LR: {lr:.2e} | Norm: {total_norm.item():.4f}"
+                )
+            wandb.log(metrics)
+
+        if is_interval:
             vloss = valid(model, valid_set, cfg, dtype=dtype)
 
             # NOTE: FSDP state_dict_type is a collective op, all ranks must enter
@@ -129,43 +145,19 @@ def train(
             with FSDP.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_policy):
                 raw_state_dict = model.state_dict()
                 if rank == 0:
-                    torch.cuda.synchronize()
-                    t1 = time.perf_counter()
-                    dt_interval = t1 - t_start
-                    dt_step = t1 - t0
-                    tps = (
-                        tc.batch_size
-                        * cfg.model.context_length
-                        * tc.accum_steps
-                        * tc.save.interval
-                        * int(os.environ.get("WORLD_SIZE", 1))
-                    ) / dt_interval
-
-                    free_mem, total_mem = torch.cuda.mem_get_info(local_rank)
-                    metrics = {
-                        "step": it,
-                        "time": dt_step,
-                        "valid/loss": vloss,
-                        "train/loss": accum_loss,
-                        "perf/tps": tps,
-                        "train/lr": lr,
-                        "gpu/mem": (total_mem - free_mem) / 1024**2,
-                        "perf/grad_norm": total_norm.item(),
-                    }
-                    wandb.log(metrics)
-                    print(f"Step {it:04d} | Time (step): {dt_step:.4f} | Loss: {vloss:.4f} | TPS: {tps:.1f}")
+                    wandb.log({"step": it, "valid/loss": vloss})
+                    print(
+                        f"*** Step {it:04d} | Time: {dt_step:.6f} | Valid Loss: {vloss:.4f} | "
+                        f"Train Loss: {accum_loss:.4f} | TPS: {tps:.1f} | LR: {lr:.2e} | Norm: {total_norm.item():.4f}"
+                    )
                     checkpoint = {"model": raw_state_dict, "optimizer": optimizer.state_dict(), "iteration": it}
                     # Ensure directory exists for saving
                     save_dir = os.path.dirname(f"./dist/checkpoint_{it:04d}.pt")
                     if save_dir:
                         os.makedirs(save_dir, exist_ok=True)
                     torch.save(checkpoint, f"./dist/checkpoint_{it:04d}.pt")
-                    # Clearer progress info
-                    if it % 10 == 0:
-                        torch.cuda.empty_cache()  # Periodically clear fragmented memory on rank 0
-
-                # Reset interval timer after recording
-                t_start = time.perf_counter()
+                    # Periodically clear fragmented memory on rank 0
+                    torch.cuda.empty_cache()
 
 
 @click.command()
