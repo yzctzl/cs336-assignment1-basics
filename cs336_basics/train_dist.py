@@ -10,6 +10,10 @@ import torch
 import torch.distributed as dist
 from torch import nn, optim
 from torch.amp.grad_scaler import GradScaler
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+    apply_activation_checkpointing,
+    checkpoint_wrapper,
+)
 from torch.distributed.fsdp import FullStateDictConfig, StateDictType
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
@@ -161,7 +165,8 @@ def train(
 @click.option("-r", "--resume", type=click.Path(True), help="resume form a checkpoint file")
 @click.option("-m", "--mmap", is_flag=True, help="use mmap load data to save memory")
 @click.option("--fp16", is_flag=True, help="use fp16 and GradScaler to train")
-def main(config, resume, mmap, fp16):
+@click.option("--checkpoint", is_flag=True, help="use activation checkpointing to save memory")
+def main(config, resume, mmap, fp16, checkpoint):
     dist.init_process_group(backend="nccl")
     rank = int(os.environ["RANK"])
     local_rank = int(os.environ["LOCAL_RANK"])
@@ -219,6 +224,12 @@ def main(config, resume, mmap, fp16):
     # NOTE: Wrap model with FSDP
     # cpu_offload=CPUOffload(offload_params=True) can be added if OOM occurs
     model = FSDP(model, auto_wrap_policy=fsdp_auto_wrap_policy, device_id=device)
+
+    # NOTE: Apply Activation Checkpointing to save memory
+    if checkpoint:
+        def check_fn(submodule):
+            return isinstance(submodule, TransformerBlock)
+        apply_activation_checkpointing(model, checkpoint_wrapper_fn=checkpoint_wrapper, check_fn=check_fn)
 
     optimizer = AdamW(model.parameters(), **cfg.optimizer.model_dump())
     # NOTE: GradScaler for FP16 mixed precision training (disabled if fp16=False)
