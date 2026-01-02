@@ -9,9 +9,9 @@ metric:
 parameters:
   # Update these from Stage 2 results
   model.d_model:
-    value: 1024
+    value: 768
   model.num_layers:
-    value: 24
+    value: 8
   # Update from Stage 1/2
   train.lr_max:
     value: 6e-4
@@ -29,6 +29,9 @@ early_terminate:
 command:
   - ${env}
   - ${interpreter}
+  - "-m"
+  - "torch.distributed.run"
+  - "--nproc_per_node=4"
   - ${program}
   - "--config"
   - "cs336_basics/configs/owt.json"

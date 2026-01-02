@@ -17,7 +17,7 @@ parameters:
     values: [12, 18, 24]
     
   train.batch_size:
-    value: 64
+    value: 8
   train.accum_steps:
     value: 8
 
@@ -29,6 +29,9 @@ early_terminate:
 command:
   - ${env}
   - ${interpreter}
+  - "-m"
+  - "torch.distributed.run"
+  - "--nproc_per_node=4"
   - ${program}
   - "--config"
   - "cs336_basics/configs/owt.json"
