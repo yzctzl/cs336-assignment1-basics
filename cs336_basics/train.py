@@ -42,6 +42,7 @@ def train(
     optimizer: optim.Optimizer,
     start_step: int,
     cfg: Configures,
+    scaler: torch.GradScaler,
     train_set: np.ndarray,
     valid_set: np.ndarray,
     dtype: torch.dtype,
@@ -79,11 +80,16 @@ def train(
 
             # Since PyTorch sums gradients in the .grad attribute by default, calling backward on each
             # micro-batch loss (scaled by 1/accum_steps) computes the average gradient for the full batch size.
-            loss.backward()
+            # scale the loss to prevent gradient underflow when using mixed precision (fp16).
+            scaler.scale(loss).backward()
 
+        # unscale before clipping to ensure the clipping threshold is applied to the actual gradient values.
+        scaler.unscale_(optimizer)
         # clip the gradients to prevent them from exploding
         total_norm = gradient_clipping(model.parameters(), tc.grad_clip)
-        optimizer.step()
+        # do optimizer step with scaler
+        scaler.step(optimizer)
+        scaler.update()
 
         # log and save checkpoint after each interval steps
         if tc.save.enable and ((it + 1) % tc.save.interval == 0 or it == 0):
@@ -120,8 +126,9 @@ def train(
 
 @click.command()
 @click.option("-c", "--config", type=click.Path(exists=True), required=True)
+@click.option("--fp16", is_flag=True, default=False, help="enable fp16+grad_scaler train")
 @click.option("-r", "--resume", type=click.Path(True), help="resume form a checkpoint file")
-def main(config, resume):
+def main(config, fp16, resume):
     try:
         with open(config) as f:
             conf = json.load(f)
@@ -157,9 +164,13 @@ def main(config, resume):
     if torch.cuda.get_device_capability() > (8, 0):
         dtype = torch.bfloat16
         torch.set_float32_matmul_precision("high")
+    elif fp16:
+        dtype = torch.float16
     else:
         dtype = torch.float32
 
+    # to scale gradients and prevent underflow during float16 mixed precision training
+    scaler = torch.GradScaler(cfg.model.device, enabled=(dtype == torch.float16))
     # lazy load file
     train_set = np.load(cfg.data.train, mmap_mode="r")
     valid_set = np.load(cfg.data.valid, mmap_mode="r")
@@ -178,7 +189,7 @@ def main(config, resume):
     model = cast(nn.Module, torch.compile(model))
 
     # train
-    train(model, optimizer, start_step, cfg, train_set, valid_set, dtype)
+    train(model, optimizer, start_step, cfg, scaler, train_set, valid_set, dtype)
 
 
 if __name__ == "__main__":

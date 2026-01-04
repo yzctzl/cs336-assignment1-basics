@@ -236,12 +236,16 @@ def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
     3. Mathematical Mapping: Maps real-valued logits to a probability
        distribution (0, 1) where only the target dimension sums to 1.0.
     """
+    in_dtype = x.dtype
+
     # for each fiber by dim subtract the max
     x = x - torch.amax(x, dim=dim, keepdim=True)
     # exp apply all element in x
     x_exp = x.exp()
     # for each fiber do standardization
-    return x_exp / x_exp.sum(dim=dim, keepdim=True)
+    sm = x_exp / x_exp.sum(dim=dim, keepdim=True)
+
+    return sm.to(in_dtype)
 
 
 def scaled_dot_product_attention(
@@ -263,8 +267,15 @@ def scaled_dot_product_attention(
         mask (Bool[Tensor, " ... queries keys"] | None): Mask tensor
     """
     d_k = Q.shape[-1]
+    d_type = Q.dtype
     # attention score = QK^T / sqrt(d_k)
-    scores = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys") / math.sqrt(d_k)
+    # in tensor core, fp16 matmul use fp32 alu, so it's safe with fp16
+    scores_ = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
+    # must cast to float32 for numerical stability before scaling and softmax to 
+    # prevent potential overflow or precision loss when inputs are in float16.
+    if scores_.dtype == torch.float16:
+        scores_ = scores_.to(torch.float32)
+    scores = scores_ / math.sqrt(d_k)
     # it will be much more efficient to use masking than to compute attention on subsequences
     if mask is not None:
         masked = torch.where(mask, scores, float("-inf"))
@@ -272,7 +283,7 @@ def scaled_dot_product_attention(
         masked = scores
     # apply softmax to scores -1 dim (keys) for each individual query (dim -2)
     # to normalize the scores into a distribution over all keys for each query
-    weights = softmax(masked, -1)
+    weights = softmax(masked, -1).to(d_type)
     # Attention(Q, K, V) = softmax(scores) @ V
     return einsum(weights, V, "... queries seq_len, ... seq_len d_k -> ... queries d_k")
 
