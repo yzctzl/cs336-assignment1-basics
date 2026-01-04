@@ -24,7 +24,7 @@ def cross_entropy(
     logits = rearrange(inputs, "b ... v -> (b ...) v")
     indices = rearrange(targets, "b ... -> (b ...)")
 
-    # logits = logits - logits.max(dim=-1, keepdim=True).values
+    # don't need logits = logits - torch.amax(logits, dim=-1, keepdim=True)
     # logsumexp() has already subtract the largest element for numerical stability
     logsumexp = torch.logsumexp(logits, dim = -1)
 
@@ -131,6 +131,7 @@ class AdamW(torch.optim.Optimizer):
             dency_factor = 1 - lr * decay
 
             # repeat for each param
+            # should optimize with _foreach_* to aviod many small kernel launch
             for p in group["params"]:
                 p: nn.Parameter
                 if p.grad is None:
@@ -202,19 +203,19 @@ def gradient_clipping(
     parameters: Iterable[torch.nn.Parameter],
     max_l2_norm: float,
     eps: float = 1e-6
-) -> float:
+) -> torch.Tensor:
     # get all parameters
     grads = [p.grad for p in parameters if p.grad is not None]
     if len(grads) == 0:
-        return 0
+        return torch.tensor(0.0)
 
-    # given the gradient for all parameters g, we compute g's ℓ2-norm
-    # global ℓ2-norm(g) for all g as a single a huge vector and norm on it
-    total_l2_norm = math.sqrt(sum((g ** 2).sum() for g in grads))
+    # Compute the L2 norm for each gradient tensor efficiently using vectorized operations
+    norms = torch._foreach_norm(grads, 2.0)
+    # Aggregate individual norms to compute the global L2 norm of the entire gradient vector
+    total_l2_norm = torch.linalg.vector_norm(torch.stack(norms), 2.0)
 
     if total_l2_norm > max_l2_norm:
         scale = max_l2_norm / (total_l2_norm + eps)
-        for g in grads:
-            g.mul_(scale)
+        torch._foreach_mul_(grads, scale)
 
     return total_l2_norm

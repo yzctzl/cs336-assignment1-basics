@@ -106,10 +106,10 @@ class RMSNorm(nn.Module):
 
         # mean is more better than sum/d_model
         ms = x.pow(2).mean(dim=-1, keepdim=True)
-        # rsqrt is more efficent than /, rsqrt <=> RSQRT in CUDA
-        rms = torch.rsqrt(ms + self.eps)
-        # use * instand of /, is more cheaper
-        result = x * rms * self.weight
+        # RMS(a) = sqrt(sum(a_i^2) / d_model + eps)
+        rms = torch.sqrt(ms + self.eps)
+        # RMSNorm(a_i) = a_i / RMS(a) * g_i
+        result = x / rms * self.weight
 
         return result.to(in_dtype)
 
@@ -237,7 +237,7 @@ def softmax(x: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
        distribution (0, 1) where only the target dimension sums to 1.0.
     """
     # for each fiber by dim subtract the max
-    x = x - x.max(dim=dim, keepdim=True).values
+    x = x - torch.amax(x, dim=dim, keepdim=True)
     # exp apply all element in x
     x_exp = x.exp()
     # for each fiber do standardization

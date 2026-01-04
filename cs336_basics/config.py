@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -72,7 +74,7 @@ class Configures(BaseModel):
     infer: InferConfig
 
 
-def update_cfg_w_sweep(base_config: Configures, sweep_config: dict) -> Configures:
+def update_cfg_w_sweep(base_config: Configures, sweep_config: dict[str, Any]) -> Configures:
     config: dict = base_config.model_dump()
 
     for key, value in sweep_config.items():
