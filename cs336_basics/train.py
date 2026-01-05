@@ -12,7 +12,14 @@ import wandb
 from cs336_basics.config import Configures, TrainConfig, update_cfg_w_sweep
 from cs336_basics.data import get_batch_iterator, load_checkpoint, save_checkpoint
 from cs336_basics.model import TransformerLM
-from cs336_basics.optimizer import AdamW, cross_entropy, get_lr_cosine_schedule, gradient_clipping
+from cs336_basics.optimizer import (
+    AdamW,
+    Muon,
+    cross_entropy,
+    get_lr_cosine_schedule,
+    get_lr_wsd_schedule,
+    gradient_clipping,
+)
 
 
 @torch.no_grad()
@@ -63,7 +70,10 @@ def train(
         optimizer.zero_grad(set_to_none=True)
 
         # use warm up + cosin lr dency schedule
-        lr = get_lr_cosine_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
+        if tc.lr_scheduler == "cosine":
+            lr = get_lr_cosine_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
+        if tc.lr_scheduler == "wsd":
+            lr = get_lr_wsd_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
         # update lr in all optimizer params groups
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
@@ -116,7 +126,7 @@ def train(
             }
             wandb.log(metrics)
             print(
-                f"Step {it:04d} | Time: {dt:.6f} | Loss: {vloss:.4f} | "
+                f"Step {it:04d} | Time: {dt:.6f} | Valid Loss: {vloss:.4f} | "
                 f"Train Loss: {accum_loss_:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}"
             )
 
@@ -178,7 +188,10 @@ def main(config, fp16, resume):
     model = TransformerLM(**cfg.model.model_dump())
     model.to(cfg.model.device)
     # init Optimizer
-    optimizer = AdamW(model.parameters(), **cfg.optimizer.model_dump())
+    if cfg.optimizer.type == "adamw":
+        optimizer = AdamW(model.parameters(), **cfg.optimizer.model_dump())
+    if cfg.optimizer.type == "muon":
+        optimizer = Muon(model, **cfg.optimizer.model_dump())
 
     # load from checkpoint
     start_step = 0

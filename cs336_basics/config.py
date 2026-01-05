@@ -29,7 +29,10 @@ class ModelConfig(BaseModel):
 
 
 class OptimizerConfig(BaseModel):
-    lr: float = Field(gt=0, le=1.0)
+    type: str = "muon"  # or adamw
+    muon_lr: float | None = 2e-2
+    muon_momentum: float | None = 0.95
+    lr: float = Field(gt=0, le=1.0)  # must same as TrainConfig.lr_max!
     betas: tuple[float, float] = (0.9, 0.99)
     eps: float = 1e-8
     weight_decay: float = 0.01
@@ -44,6 +47,7 @@ class CheckPointsConfig(BaseModel):
 class TrainConfig(BaseModel):
     batch_size: int = Field(ge=1)
     steps: int = Field(gt=0)
+    lr_scheduler: str = "wsd"  # or cosine
     lr_max: float
     lr_min: float
     t_w: int  # Warmup steps
@@ -72,6 +76,27 @@ class Configures(BaseModel):
     train: TrainConfig
     tokenizer: TokenizerConfig
     infer: InferConfig
+
+    @model_validator(mode="after")
+    def validate_lr_consistency(self) -> "Configures":
+        if self.optimizer.lr != self.train.lr_max:
+            raise ValueError(
+                f"optimizer.lr ({self.optimizer.lr}) must be equal to train.lr_max ({self.train.lr_max})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_wsd_tc(self) -> "Configures":
+        if self.train.lr_scheduler == "wsd":
+            decay_ratio = 0.1
+            expected_t_c = int(self.train.steps * (1.0 - decay_ratio))
+            if self.train.t_c != expected_t_c:
+                raise ValueError(
+                    f"For 'wsd' scheduler, train.t_c must be {1.0 - decay_ratio} * train.steps "
+                    f"(expected {expected_t_c}, got {self.train.t_c})"
+                )
+        return self
+
 
 
 def update_cfg_w_sweep(base_config: Configures, sweep_config: dict[str, Any]) -> Configures:
