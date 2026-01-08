@@ -130,7 +130,7 @@ def train(
                 f"Train Loss: {accum_loss_:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}"
             )
 
-            save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}.pt")
+            save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
             t0 = time.perf_counter()
 
 
@@ -171,19 +171,19 @@ def main(config, fp16, resume):
     # seed
     torch.manual_seed(cfg.seed)
     # precision
-    if torch.cuda.get_device_capability() > (8, 0):
+    if fp16:
+        dtype = torch.float16
+    elif torch.cuda.get_device_capability() >= (8, 0):
         dtype = torch.bfloat16
         torch.set_float32_matmul_precision("high")
-    elif fp16:
-        dtype = torch.float16
     else:
         dtype = torch.float32
 
     # to scale gradients and prevent underflow during float16 mixed precision training
     scaler = torch.GradScaler(cfg.model.device, enabled=(dtype == torch.float16))
     # lazy load file
-    train_set = np.load(cfg.data.train, mmap_mode="r")
-    valid_set = np.load(cfg.data.valid, mmap_mode="r")
+    train_set = np.load(cfg.data.train)
+    valid_set = np.load(cfg.data.valid)
     # init Model
     model = TransformerLM(**cfg.model.model_dump())
     model.to(cfg.model.device)

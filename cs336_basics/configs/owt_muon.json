@@ -1,0 +1,52 @@
+{
+    "seed": 32,
+    "data": {
+        "train": "./data/owt_train.npy",
+        "valid": "./data/owt_valid.npy",
+        "dtype": "uint16"
+    },
+    "model": {
+        "vocab_size": 32000,
+        "context_length": 768,
+        "d_model": 768,
+        "num_layers": 8,
+        "num_heads": 16,
+        "d_ff": 2048,
+        "rope_theta": 1e4,
+        "device": "cuda"
+    },
+    "optimizer": {
+        "type": "muon",
+        "muon_lr": 4e-2,
+        "muon_momentum": 0.95,
+        "lr": 1e-3,
+        "betas": [0.9, 0.95],
+        "eps": 1e-8,
+        "weight_decay": 0.1
+    },
+    "train": {
+        "batch_size": 32,
+        "steps": 10000,
+        "lr_scheduler": "wsd",
+        "lr_max": 1e-3,
+        "lr_min": 1e-6,
+        "t_w": 500,
+        "t_c": 9000,
+        "grad_clip": 1.0,
+        "accum_steps": 16,
+        "save": {
+            "enable": true,
+            "interval": 100,
+            "to": "./dist/ckpt.pt"
+        }
+    },
+    "tokenizer": {
+        "vocab_path": "./data/owt_train_vocab.pkl",
+        "merges_path": "./data/owt_train_merges.pkl",
+        "special_tokens": ["<|endoftext|>"]
+    },
+    "infer": {
+        "kv_cache": false,
+        "checkpoint": "./dist/saves/checkpoint_2399_1.64.pt"
+    }
+}

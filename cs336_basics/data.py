@@ -75,7 +75,7 @@ class TextDataset(IterableDataset):
             )
 
 
-def get_batch_iterator(data, batch_size, context_length, device, num_workers=4):
+def get_batch_iterator(data, batch_size, context_length, device, num_workers=8):
     tds = TextDataset(data, context_length)
     dataloader = DataLoader(
         tds, 

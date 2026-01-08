@@ -273,7 +273,7 @@ def scaled_dot_product_attention(
     scores_ = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
     # must cast to float32 for numerical stability before scaling and softmax to 
     # prevent potential overflow or precision loss when inputs are in float16.
-    if scores_.dtype == torch.float16:
+    if scores_.dtype in (torch.float16, torch.bfloat16):
         scores_ = scores_.to(torch.float32)
     scores = scores_ / math.sqrt(d_k)
     # it will be much more efficient to use masking than to compute attention on subsequences
