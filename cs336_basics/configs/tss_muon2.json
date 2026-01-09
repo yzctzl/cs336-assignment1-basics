@@ -19,7 +19,7 @@
         "type": "muon",
         "muon_lr": 4e-2,
         "muon_momentum": 0.95,
-        "lr": 6e-4,
+        "lr": 6e-3,
         "betas": [0.9, 0.95],
         "eps": 1e-8,
         "weight_decay": 0.1
@@ -28,7 +28,7 @@
         "batch_size": 64,
         "steps": 3000,
         "lr_scheduler": "wsd",
-        "lr_max": 6e-4,
+        "lr_max": 6e-3,
         "lr_min": 1e-6,
         "t_w": 200,
         "t_c": 2700,

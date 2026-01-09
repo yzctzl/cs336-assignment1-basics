@@ -9,12 +9,12 @@ metric:
 parameters:
   optimizer.muon_lr:
     distribution: log_uniform_values 
-    min: 5e-3
-    max: 2e-2
+    min: 1e-3
+    max: 8e-3
   train.lr_max:
     distribution: log_uniform_values
-    min: 2e-3
-    max: 1e-2
+    min: 5e-4
+    max: 5e-3
 
 early_terminate:
   type: hyperband
