@@ -130,7 +130,7 @@ def train(
                 f"Train Loss: {accum_loss_:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}"
             )
 
-            save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
+            # save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
             t0 = time.perf_counter()
 
 
@@ -150,7 +150,7 @@ def main(config, fp16, resume):
     # init wandb
     wandb.init(
         project="cs336-assignment1-basic",
-        group="TinyStories",
+        group="TinyStories-stage1-lr2",
         config=cfg.model_dump(),
         reinit="finish_previous",
         settings=wandb.Settings(quiet=True, silent=True),

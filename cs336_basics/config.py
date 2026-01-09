@@ -80,9 +80,10 @@ class Configures(BaseModel):
     @model_validator(mode="after")
     def validate_lr_consistency(self) -> "Configures":
         if self.optimizer.lr != self.train.lr_max:
-            raise ValueError(
+            print(
                 f"optimizer.lr ({self.optimizer.lr}) must be equal to train.lr_max ({self.train.lr_max})"
             )
+            self.optimizer.lr = self.train.lr_max
         return self
 
     @model_validator(mode="after")
