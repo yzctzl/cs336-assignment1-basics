@@ -1,5 +1,5 @@
 project: cs336-assignment1-basic
-name: tss-stage1-lr3
+name: tss-stage1-lr6
 program: cs336_basics/train.py
 
 method: bayes
@@ -8,16 +8,19 @@ metric:
   goal: minimize
 parameters:
   optimizer.muon_lr:
-    distribution: log_uniform_values 
-    min: 0.004
+    distribution: log_uniform_values
+    min: 0.008
     max: 0.04
-  train.accum_steps:
-    values: [1, 2, 4]
+  train.lr_max:
+    distribution: log_uniform_values
+    min: 0.004
+    max: 0.01
+
 
 early_terminate:
   type: hyperband
   max_iter: 30
-  min_iter: 10
+  min_iter: 6
   eta: 3
   s: 2
   strict: true
@@ -29,4 +32,4 @@ command:
   - "--config"
   - "cs336_basics/configs/tss_muon2.json"
 
-# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/m4velecz
+# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/0gfm6cft
