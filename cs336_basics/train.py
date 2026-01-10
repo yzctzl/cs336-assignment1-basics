@@ -6,9 +6,9 @@ from typing import cast
 import click
 import numpy as np
 import torch
+import wandb
 from torch import nn, optim
 
-import wandb
 from cs336_basics.config import Configures, TrainConfig, update_cfg_w_sweep
 from cs336_basics.data import get_batch_iterator, load_checkpoint, save_checkpoint
 from cs336_basics.model import TransformerLM
@@ -73,7 +73,7 @@ def train(
         if tc.lr_scheduler == "cosine":
             lr = get_lr_cosine_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
         if tc.lr_scheduler == "wsd":
-            lr = get_lr_wsd_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
+            lr = get_lr_wsd_schedule(it, tc.lr_max, tc.lr_min, tc.steps, tc.t_w, tc.t_c)
         # update lr in all optimizer params groups
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
@@ -102,12 +102,12 @@ def train(
         scaler.update()
 
         # log and save checkpoint after each interval steps
-        if tc.save.enable and ((it + 1) % tc.save.interval == 0 or it == 0):
+        if (it + 1) % tc.interval == 0 or it == 0:
             # Wait for all kernels in all streams on a CUDA device to complete, then count time.
             torch.cuda.synchronize()
             t1 = time.perf_counter()
             dt = t1 - t0
-            tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps * tc.save.interval) / dt
+            tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps * tc.interval) / dt
 
             # calc valid loss
             vloss = valid(model, valid_iter, cfg, dtype=dtype)
@@ -130,7 +130,8 @@ def train(
                 f"Train Loss: {accum_loss_:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}"
             )
 
-            save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
+            if tc.checkpoint:
+                save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
             t0 = time.perf_counter()
 
 

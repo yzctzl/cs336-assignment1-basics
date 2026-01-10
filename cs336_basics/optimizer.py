@@ -50,7 +50,7 @@ class SGD(torch.optim.Optimizer):
         defaults = {"lr": lr}
         super().__init__(params, defaults)
 
-    def step(self, closure: Callable | None = None):
+    def step(self, closure: Callable | None = None) -> float | None:
         loss = None if closure is None else closure()
         for group in self.param_groups:
             lr = group["lr"]          # Get the learning rate.
@@ -107,7 +107,7 @@ class AdamW(torch.optim.Optimizer):
         super().__init__(params, defaults)
 
     @torch.no_grad()
-    def step(self, closure: Callable | None = None):
+    def step(self, closure: Callable | None = None) -> float | None:
         """
         in place update, leverage step to group param, use torch._foreach_* speedup
         """
@@ -206,9 +206,10 @@ def get_lr_wsd_schedule(
     it: int,
     lr_max: float,
     lr_min: float,
+    steps: int,
     t_w: int,  # warm up step
     t_c: int,  # cosine decay step
-    decay_ratio: float = 0.1  # experience golden ratio
+    # decay_ratio: float = 0.1  # experience golden ratio
 ) -> float:
     """
     WSD (Warmup-Stable-Decay) Scheduler
@@ -218,7 +219,7 @@ def get_lr_wsd_schedule(
         return lr_max * (it + 1) / (t_w + 1)
 
     # can pass the param total_steps or compute last 10% steps
-    decay_steps = int(t_c / (1 - decay_ratio) * decay_ratio)
+    decay_steps = steps - t_c
 
     # Stable (High Water Level) ~90%
     if it < t_c:
@@ -384,7 +385,7 @@ class Muon(torch.optim.Optimizer):
 
 
     @torch.no_grad()
-    def step(self, closure=None):
+    def step(self, closure=None) -> float | None:
         loss = None
         if closure is not None:
             with torch.enable_grad():

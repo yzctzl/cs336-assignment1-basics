@@ -41,7 +41,7 @@ class OptimizerConfig(BaseModel):
 class CheckPointsConfig(BaseModel):
     enable: bool = False
     interval: int = Field(ge=1)
-    to: str = "./dist/"
+    to: str | None = "./dist/"
 
 
 class TrainConfig(BaseModel):
@@ -54,7 +54,8 @@ class TrainConfig(BaseModel):
     t_c: int  # Cosine decay steps
     grad_clip: float = 1.0
     accum_steps: int
-    save: CheckPointsConfig
+    checkpoint: bool = True
+    interval: int = 100
 
 
 class TokenizerConfig(BaseModel):
@@ -74,15 +75,13 @@ class Configures(BaseModel):
     model: ModelConfig
     optimizer: OptimizerConfig
     train: TrainConfig
-    tokenizer: TokenizerConfig
-    infer: InferConfig
+    tokenizer: TokenizerConfig | None
+    infer: InferConfig | None
 
     @model_validator(mode="after")
     def validate_lr_consistency(self) -> "Configures":
         if self.optimizer.lr != self.train.lr_max:
-            raise ValueError(
-                f"optimizer.lr ({self.optimizer.lr}) must be equal to train.lr_max ({self.train.lr_max})"
-            )
+            raise ValueError(f"optimizer.lr ({self.optimizer.lr}) must be equal to train.lr_max ({self.train.lr_max})")
         return self
 
     @model_validator(mode="after")
@@ -96,7 +95,6 @@ class Configures(BaseModel):
                     f"(expected {expected_t_c}, got {self.train.t_c})"
                 )
         return self
-
 
 
 def update_cfg_w_sweep(base_config: Configures, sweep_config: dict[str, Any]) -> Configures:
