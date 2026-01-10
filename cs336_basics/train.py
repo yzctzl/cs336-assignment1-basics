@@ -123,6 +123,7 @@ def train(
                 "train/lr": lr,
                 "gpu/mem": (total_mem - free_mem) / 1024**2,
                 "perf/grad_norm": total_norm,
+                "samples": it * tc.batch_size * tc.accum_steps
             }
             wandb.log(metrics)
             print(

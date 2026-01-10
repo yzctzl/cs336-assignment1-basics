@@ -9,17 +9,15 @@ metric:
 parameters:
   optimizer.muon_lr:
     distribution: log_uniform_values 
-    min: 1e-3
-    max: 8e-3
-  train.lr_max:
-    distribution: log_uniform_values
-    min: 5e-4
-    max: 5e-3
+    min: 0.004
+    max: 0.04
+  train.accum_steps:
+    values: [1, 2, 4]
 
 early_terminate:
   type: hyperband
-  max_iter: 3000
-  min_iter: 500
+  max_iter: 30
+  min_iter: 10
   eta: 3
   s: 2
   strict: true
@@ -31,4 +29,4 @@ command:
   - "--config"
   - "cs336_basics/configs/tss_muon2.json"
 
-# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/56cqaeym
+# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/m4velecz
