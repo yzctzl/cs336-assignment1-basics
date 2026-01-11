@@ -99,7 +99,8 @@ class AdamW(torch.optim.Optimizer):
         lr: float = 1e-3,
         betas: tuple[float, float] = (0.9, 0.99),
         eps: float = 1e-8,
-        weight_decay: float = 1e-2
+        weight_decay: float = 1e-2,
+        **kwrags,
     ) -> None:
         if lr < 0:
             raise ValueError(f"Invalid learning rate: {lr}")

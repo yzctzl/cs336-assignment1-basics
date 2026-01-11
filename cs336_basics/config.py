@@ -84,18 +84,6 @@ class Configures(BaseModel):
             raise ValueError(f"optimizer.lr ({self.optimizer.lr}) must be equal to train.lr_max ({self.train.lr_max})")
         return self
 
-    @model_validator(mode="after")
-    def validate_wsd_tc(self) -> "Configures":
-        if self.train.lr_scheduler == "wsd":
-            decay_ratio = 0.1
-            expected_t_c = int(self.train.steps * (1.0 - decay_ratio))
-            if self.train.t_c != expected_t_c:
-                raise ValueError(
-                    f"For 'wsd' scheduler, train.t_c must be {1.0 - decay_ratio} * train.steps "
-                    f"(expected {expected_t_c}, got {self.train.t_c})"
-                )
-        return self
-
 
 def update_cfg_w_sweep(base_config: Configures, sweep_config: dict[str, Any]) -> Configures:
     config: dict = base_config.model_dump()
