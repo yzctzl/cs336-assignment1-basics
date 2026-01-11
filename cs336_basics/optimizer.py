@@ -206,6 +206,7 @@ def get_lr_wsd_schedule(
     it: int,
     lr_max: float,
     lr_min: float,
+    steps: int,  # total steps
     t_w: int,  # warm up step
     t_c: int,  # cosine decay step
     decay_ratio: float = 0.1  # experience golden ratio
@@ -217,8 +218,7 @@ def get_lr_wsd_schedule(
     if it < t_w:
         return lr_max * (it + 1) / (t_w + 1)
 
-    # can pass the param total_steps or compute last 10% steps
-    decay_steps = int(t_c / (1 - decay_ratio) * decay_ratio)
+    decay_steps = steps - t_c
 
     # Stable (High Water Level) ~90%
     if it < t_c:

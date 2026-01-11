@@ -8,14 +8,15 @@ metric:
   goal: minimize
 parameters:
   optimizer.muon_lr:
-    distribution: log_uniform_values
-    min: 0.008
-    max: 0.04
+    distribution: uniform
+    min: 0.010
+    max: 0.013
   train.lr_max:
-    distribution: log_uniform_values
+    distribution: uniform
     min: 0.004
-    max: 0.01
-
+    max: 0.005
+  train.decay_steps:
+    values: [300, 400, 500, 600]
 
 early_terminate:
   type: hyperband
@@ -32,4 +33,4 @@ command:
   - "--config"
   - "cs336_basics/configs/tss_muon2.json"
 
-# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/0gfm6cft
+# result: https://wandb.ai/yzctzl_/cs336-assignment1-basic/sweeps/5az6nm13

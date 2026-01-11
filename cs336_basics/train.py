@@ -73,7 +73,7 @@ def train(
         if tc.lr_scheduler == "cosine":
             lr = get_lr_cosine_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
         if tc.lr_scheduler == "wsd":
-            lr = get_lr_wsd_schedule(it, tc.lr_max, tc.lr_min, tc.t_w, tc.t_c)
+            lr = get_lr_wsd_schedule(it, tc.lr_max, tc.lr_min, tc.steps, tc.t_w, tc.t_c)
         # update lr in all optimizer params groups
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
