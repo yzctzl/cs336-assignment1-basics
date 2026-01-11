@@ -131,7 +131,8 @@ def train(
                 f"Train Loss: {accum_loss_:.4f} | TPS: {tps:.1f} | LR: {lr:.2e}"
             )
 
-            # save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
+            if it > tc.t_c:
+                save_checkpoint(model, optimizer, it, f"./dist/checkpoint_{it:04d}_{vloss:.4f}.pt")
             t0 = time.perf_counter()
 
 

@@ -1,0 +1,52 @@
+{
+    "seed": 32,
+    "data": {
+        "train": "./data/TinyStoriesV2-GPT4-train.npy",
+        "valid": "./data/TinyStoriesV2-GPT4-valid.npy",
+        "dtype": "uint16"
+    },
+    "model": {
+        "vocab_size": 10048,
+        "context_length": 256,
+        "d_model": 768,
+        "num_layers": 12,
+        "num_heads": 16,
+        "d_ff": 2048,
+        "rope_theta": 1e4,
+        "device": "cuda"
+    },
+    "optimizer": {
+        "type": "muon",
+        "muon_lr": 0.0108,
+        "muon_momentum": 0.95,
+        "lr": 0.0047,
+        "betas": [0.9, 0.95],
+        "eps": 1e-8,
+        "weight_decay": 0.1
+    },
+    "train": {
+        "batch_size": 64,
+        "steps": 9000,
+        "lr_scheduler": "wsd",
+        "lr_max": 0.0047,
+        "lr_min": 1e-6,
+        "t_w": 600,
+        "t_c": 7500,
+        "grad_clip": 1.0,
+        "accum_steps": 4,
+        "save": {
+            "enable": true,
+            "interval": 100,
+            "to": "./dist/ckpt.pt"
+        }
+    },
+    "tokenizer": {
+        "vocab_path": "./data/TinyStoriesV2-GPT4-train_vocab.pkl",
+        "merges_path": "./data/TinyStoriesV2-GPT4-train_merges.pkl",
+        "special_tokens": ["<|endoftext|>"]
+    },
+    "infer": {
+        "kv_cache": false,
+        "checkpoint": ""
+    }
+}
