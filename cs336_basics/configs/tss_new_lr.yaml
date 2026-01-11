@@ -1,0 +1,27 @@
+project: cs336-assignment1-basic
+name: tss-new-lr
+program: cs336_basics/train.py
+
+method: bayes
+metric:
+  name: valid/loss
+  goal: minimize
+parameters:
+  optimizer.muon_lr:
+    values: [2e-2, 3e-2, 4e-2, 5e-2, 6e-2]
+  train.lr_max:
+    values: [8e-4, 9e-4, 1e-3, 1.5e-3, 2e-3]
+
+early_terminate:
+  type: hyperband
+  max_iter: 3000
+  min_iter: 500
+  eta: 3
+  strict: true
+
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - "--config"
+  - "cs336_basics/configs/tss_muon_new.json"
