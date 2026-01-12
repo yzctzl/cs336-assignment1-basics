@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import json
 import time
 from collections.abc import Iterator
@@ -23,7 +24,7 @@ from cs336_basics.optimizer import (
 
 
 @torch.no_grad()
-def valid(model: nn.Module, valid_iter: Iterator, cfg: Configures, iters: int = 10, dtype: torch.dtype | None = None):
+def valid(model: nn.Module, valid_iter: Iterator, ctx, iters: int = 10, dtype: torch.dtype | None = None):
     """
     get 10 sample from valid set and calculate the mean loss
     """
@@ -34,7 +35,7 @@ def valid(model: nn.Module, valid_iter: Iterator, cfg: Configures, iters: int = 
     for k in range(iters):
         x, y = next(valid_iter)
 
-        with torch.autocast(device_type="cuda", dtype=dtype):
+        with ctx:
             logits = model(x)
             loss = cross_entropy(logits, y)
         losses[k] = loss.detach()
@@ -64,6 +65,9 @@ def train(
     train_iter = get_batch_iterator(train_set, tc.batch_size, cfg.model.context_length, device)
     valid_iter = get_batch_iterator(valid_set, tc.batch_size, cfg.model.context_length, device)
 
+    # wrapper autocast
+    ctx = torch.autocast(device_type="cuda", dtype=dtype) if dtype != torch.float32 else nullcontext()
+
     t0 = time.perf_counter()
     for it in range(start_step, tc.steps):
         # x, y = get_batch(train_set, tc.batch_size, cfg.model.context_length, device)
@@ -83,7 +87,7 @@ def train(
         for micro_step in range(tc.accum_steps):
             x, y = next(train_iter)
 
-            with torch.autocast(device_type="cuda", dtype=dtype):
+            with ctx:
                 logits = model(x)
                 loss = cross_entropy(logits, y) / tc.accum_steps
             accum_loss += loss.detach()
@@ -110,7 +114,7 @@ def train(
             tps = (tc.batch_size * cfg.model.context_length * tc.accum_steps * tc.interval) / dt
 
             # calc valid loss
-            vloss = valid(model, valid_iter, cfg, dtype=dtype)
+            vloss = valid(model, valid_iter, ctx, dtype=dtype)
             free_mem, total_mem = torch.cuda.mem_get_info(device)
             # log to wandb
             accum_loss_ = accum_loss.item()
