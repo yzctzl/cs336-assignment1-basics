@@ -18,8 +18,13 @@ class Generator:
 
         model = TransformerLM(**cfg.model.model_dump())
         model.to(cfg.model.device)
+
+        model = torch.compile(model)
+        if torch.cuda.get_device_capability() >= (8, 0):
+            torch.set_float32_matmul_precision("high")
+
         load_checkpoint(cfg.infer.checkpoint, model)
-        # self.model = torch.compile(model, mode="reduce-overhead")
+
         self.model = model
         self.model.eval()
 

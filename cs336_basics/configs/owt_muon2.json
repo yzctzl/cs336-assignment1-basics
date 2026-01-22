@@ -1,15 +1,15 @@
 {
     "seed": 32,
     "data": {
-        "train": "./data/TinyStoriesV2-GPT4-train.npy",
-        "valid": "./data/TinyStoriesV2-GPT4-valid.npy",
+        "train": "./data/owt_train.npy",
+        "valid": "./data/owt_valid.npy",
         "dtype": "uint16"
     },
     "model": {
-        "vocab_size": 10048,
-        "context_length": 512,
+        "vocab_size": 32000,
+        "context_length": 768,
         "d_model": 768,
-        "num_layers": 12,
+        "num_layers": 8,
         "num_heads": 16,
         "d_ff": 2048,
         "rope_theta": 1e4,
@@ -17,23 +17,23 @@
     },
     "optimizer": {
         "type": "muon",
-        "muon_lr": 0.02,
+        "muon_lr": 0.0115,
         "muon_momentum": 0.95,
-        "lr": 0.001,
+        "lr": 1e-3,
         "betas": [0.9, 0.95],
         "eps": 1e-8,
         "weight_decay": 0.1
     },
     "train": {
-        "batch_size": 64,
-        "steps": 5000,
+        "batch_size": 32,
+        "steps": 20000,
         "lr_scheduler": "wsd",
-        "lr_max": 0.001,
+        "lr_max": 1e-3,
         "lr_min": 1e-6,
-        "t_w": 300,
-        "t_c": 3000,
+        "t_w": 2000,
+        "t_c": 16000,
         "grad_clip": 1.0,
-        "accum_steps": 4,
+        "accum_steps": 8,
         "save": {
             "enable": true,
             "interval": 100,
@@ -41,12 +41,12 @@
         }
     },
     "tokenizer": {
-        "vocab_path": "./data/TinyStoriesV2-GPT4-train_vocab.pkl",
-        "merges_path": "./data/TinyStoriesV2-GPT4-train_merges.pkl",
+        "vocab_path": "./data/owt_train_vocab.pkl",
+        "merges_path": "./data/owt_train_merges.pkl",
         "special_tokens": ["<|endoftext|>"]
     },
     "infer": {
         "kv_cache": false,
-        "checkpoint": "./dist/checkpoint_4799_1.0475.pt"
+        "checkpoint": "./dist/saves/checkpoint_2399_1.64.pt"
     }
 }

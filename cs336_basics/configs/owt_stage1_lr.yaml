@@ -7,31 +7,21 @@ metric:
   name: valid/loss
   goal: minimize
 parameters:
-  model.d_model:
-    value: 768
-  model.num_layers:
-    value: 12
-  train.batch_size: 
-    value: 64
-  train.accum_steps:
-    value: 8
-  
-  train.lr_max:
+  optimizer.muon_lr:
     distribution: log_uniform_values
-    min: 1e-4
-    max: 1e-2
-  
-  train.t_w:
-    value: 500
+    min: 1e-3
+    max: 1e-1
 
 early_terminate:
   type: hyperband
+  max_iter: 2000
   min_iter: 500
-  eta: 2
+  eta: 3
+  strict: true
 
 command:
   - ${env}
   - ${interpreter}
   - ${program}
   - "--config"
-  - "cs336_basics/configs/owt.json"
+  - "cs336_basics/configs/owt_muon2.json"
